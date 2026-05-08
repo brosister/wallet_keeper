@@ -6,55 +6,41 @@ enum _ShellRouteKind {
   smsSettings,
   settingsData,
   settingsPrivacy,
+  assetFlowHistory,
   editor,
-  memoEditor,
 }
 
 class _ShellRoute {
   const _ShellRoute.root()
       : kind = _ShellRouteKind.root,
         existing = null,
-        smsDraft = null,
-        memo = null,
-        month = null;
+        smsDraft = null;
   const _ShellRoute.smsInbox()
       : kind = _ShellRouteKind.smsInbox,
         existing = null,
-        smsDraft = null,
-        memo = null,
-        month = null;
+        smsDraft = null;
   const _ShellRoute.smsSettings()
       : kind = _ShellRouteKind.smsSettings,
         existing = null,
-        smsDraft = null,
-        memo = null,
-        month = null;
+        smsDraft = null;
   const _ShellRoute.settingsData()
       : kind = _ShellRouteKind.settingsData,
         existing = null,
-        smsDraft = null,
-        memo = null,
-        month = null;
+        smsDraft = null;
   const _ShellRoute.settingsPrivacy()
       : kind = _ShellRouteKind.settingsPrivacy,
         existing = null,
-        smsDraft = null,
-        memo = null,
-        month = null;
-  const _ShellRoute.memoEditor({this.memo, this.month})
-      : kind = _ShellRouteKind.memoEditor,
+        smsDraft = null;
+  const _ShellRoute.assetFlowHistory()
+      : kind = _ShellRouteKind.assetFlowHistory,
         existing = null,
         smsDraft = null;
   const _ShellRoute.editor({this.existing, this.smsDraft})
-      : kind = _ShellRouteKind.editor,
-        memo = null,
-        month = null;
+      : kind = _ShellRouteKind.editor;
 
   final _ShellRouteKind kind;
   final LedgerEntry? existing;
   final WalletKeeperSmsDraft? smsDraft;
-  final WalletKeeperMemo? memo;
-  final DateTime? month;
 }
 
 class LedgerHomePage extends StatefulWidget {
@@ -83,11 +69,14 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
   final WalletKeeperNotificationAccessRepository _notificationAccessRepository =
       const WalletKeeperNotificationAccessRepository();
   final WalletKeeperMemoRepository _memoRepository = WalletKeeperMemoRepository();
+  final WalletKeeperBudgetRepository _budgetRepository =
+      WalletKeeperBudgetRepository();
   final WalletKeeperAccountRepository _accountRepository = WalletKeeperAccountRepository();
   final WalletKeeperCloudSyncRepository _cloudSyncRepository = WalletKeeperCloudSyncRepository();
 
   List<LedgerEntry> _entries = const [];
   List<WalletKeeperMemo> _memos = const [];
+  List<WalletKeeperBudgetSetting> _budgets = const [];
   List<WalletKeeperSmsDraft> _smsDrafts = const [];
   WalletKeeperUserSession? _session;
   WalletKeeperSmsSettings _smsSettings = const WalletKeeperSmsSettings(
@@ -136,7 +125,7 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
     if (state == AppLifecycleState.resumed) {
       _refreshFinancialAppNotificationAccess();
       _startPendingMmsTimerIfNeeded();
-      _consumePendingMmsOnly();
+      _consumePendingRealtimeMessages();
       _consumeLaunchRoute();
     } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached ||
@@ -158,6 +147,7 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
   Future<void> _load() async {
     final loadedEntries = await _repository.load();
     final loadedMemos = await _memoRepository.load();
+    final loadedBudgets = await _budgetRepository.load();
     final loadedDrafts = await _smsAutomationRepository.loadInboxDrafts();
     final loadedSettings = await _smsSettingsRepository.load();
     final financialNotificationEnabled =
@@ -168,6 +158,7 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
     setState(() {
       _entries = remoteBundle != null && loadedEntries.isEmpty ? remoteBundle.entries : loadedEntries;
       _memos = remoteBundle != null && loadedMemos.isEmpty ? remoteBundle.memos : loadedMemos;
+      _budgets = remoteBundle != null && loadedBudgets.isEmpty ? remoteBundle.budgets : loadedBudgets;
       _smsDrafts = loadedDrafts;
       _smsSettings = remoteBundle?.smsSettings ?? loadedSettings;
       _financialAppNotificationEnabled = financialNotificationEnabled;
@@ -179,11 +170,14 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
     if (remoteBundle != null && loadedMemos.isEmpty) {
       await _memoRepository.save(remoteBundle.memos);
     }
+    if (remoteBundle != null && loadedBudgets.isEmpty) {
+      await _budgetRepository.save(remoteBundle.budgets);
+    }
     if (remoteBundle != null) {
       await _smsSettingsRepository.save(remoteBundle.smsSettings);
     }
     _startPendingMmsTimerIfNeeded();
-    await _consumePendingMmsOnly();
+    await _consumePendingRealtimeMessages();
     await _consumeLaunchRoute();
   }
 
@@ -214,12 +208,17 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
       await _cloudSyncRepository.sync(
         entries: _entries,
         memos: _memos,
+        budgets: _budgets,
         smsSettings: _smsSettings,
       );
     } catch (_) {}
   }
 
-  Future<void> _saveEntry(LedgerEntry entry, {String? consumedDraftId}) async {
+  Future<void> _saveEntry(
+    LedgerEntry entry, {
+    String? consumedDraftId,
+    bool stayOnCurrentRoute = false,
+  }) async {
     final next = [..._entries];
     final index = next.indexWhere((item) => item.id == entry.id);
     if (index >= 0) {
@@ -238,7 +237,9 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
       if (consumedDraftId != null) {
         _smsDrafts = _smsDrafts.where((draft) => draft.id != consumedDraftId).toList();
       }
-      _popToSmsInboxOrRoot();
+      if (!stayOnCurrentRoute) {
+        _popToSmsInboxOrRoot();
+      }
     });
     await _syncCloud();
     await showAppToast('내역을 저장했습니다.');
@@ -279,39 +280,23 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
     await showAppToast('내역을 삭제했습니다.');
   }
 
-  void _openMemoComposer({WalletKeeperMemo? existing, required DateTime month}) {
-    setState(() {
-      _routeStack.add(_ShellRoute.memoEditor(memo: existing, month: month));
-    });
-  }
-
-  Future<void> _saveMemo(WalletKeeperMemo memo) async {
-    final next = [..._memos];
-    final index = next.indexWhere((item) => item.id == memo.id);
-    if (index >= 0) {
-      next[index] = memo;
-    } else {
-      next.add(memo);
-    }
-    next.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-    await _memoRepository.save(next);
+  Future<void> _saveBudgetsForMonth(
+    DateTime month,
+    List<WalletKeeperBudgetSetting> monthBudgets,
+  ) async {
+    final monthKey = DateFormat('yyyy-MM').format(month);
+    final retained = _budgets.where((budget) => budget.monthKey != monthKey).toList();
+    final next = [...retained, ...monthBudgets]
+      ..sort((a, b) {
+        final monthCompare = b.monthKey.compareTo(a.monthKey);
+        if (monthCompare != 0) return monthCompare;
+        return a.category.compareTo(b.category);
+      });
+    await _budgetRepository.save(next);
     if (!mounted) return;
-    setState(() {
-      _memos = next;
-      _routeStack.removeLast();
-    });
+    setState(() => _budgets = next);
     await _syncCloud();
-    await showAppToast('메모를 저장했습니다.');
-  }
-
-  Future<void> _deleteMemo(WalletKeeperMemo memo) async {
-    final next = _memos.where((item) => item.id != memo.id).toList()
-      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-    await _memoRepository.save(next);
-    if (!mounted) return;
-    setState(() => _memos = next);
-    await _syncCloud();
-    await showAppToast('메모를 삭제했습니다.');
+    await showAppToast('예산을 저장했습니다.');
   }
 
   Future<void> _runGuarded(
@@ -352,9 +337,113 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
   }
 
   void _openComposer({LedgerEntry? existing, WalletKeeperSmsDraft? smsDraft}) {
+    if (_currentRoute.kind == _ShellRouteKind.editor) {
+      return;
+    }
     setState(() {
       _routeStack.add(_ShellRoute.editor(existing: existing, smsDraft: smsDraft));
     });
+  }
+
+  Future<void> _showEntryEditorSheet({LedgerEntry? existing}) async {
+    final editorKey = GlobalKey<_EntryEditorPageState>();
+    Future<void> attemptClose(BuildContext sheetContext) async {
+      final canLeave =
+          await editorKey.currentState?.confirmDiscardIfNeeded() ?? true;
+      if (!canLeave || !sheetContext.mounted) return;
+      Navigator.of(sheetContext).pop();
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      isDismissible: false,
+      enableDrag: false,
+      builder: (sheetContext) {
+        final keyboardInset = MediaQuery.viewInsetsOf(sheetContext).bottom;
+        return PopScope(
+          canPop: false,
+          onPopInvokedWithResult: (didPop, _) async {
+            if (didPop) return;
+            await attemptClose(sheetContext);
+          },
+          child: AnimatedPadding(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            padding: EdgeInsets.only(bottom: keyboardInset),
+            child: FractionallySizedBox(
+              heightFactor: 0.93,
+              child: ClipRRect(
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(28),
+                ),
+                child: Material(
+                  color: Colors.white,
+                  child: EntryEditorPage(
+                    key: editorKey,
+                    existing: existing,
+                    featureAccess: widget.featureAccess,
+                    onRequestSmsAccess: widget.onRequestFeatureAccess,
+                    onCancel: () => attemptClose(sheetContext),
+                    onSave: (entry) async {
+                      await _saveEntry(
+                        entry,
+                        stayOnCurrentRoute: true,
+                      );
+                      if (!sheetContext.mounted) return;
+                      Navigator.of(sheetContext).pop();
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _showBudgetSettingsSheet({
+    required DateTime month,
+  }) async {
+    final monthKey = DateFormat('yyyy-MM').format(month);
+    final monthBudgets = _budgets
+        .where((budget) => budget.monthKey == monthKey)
+        .toList()
+      ..sort((a, b) => a.category.compareTo(b.category));
+    final categorySuggestions = _entries
+        .where((entry) => entry.type != EntryType.transfer)
+        .map((entry) => entry.category.trim())
+        .where((category) => category.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return FractionallySizedBox(
+          heightFactor: 0.82,
+          child: ClipRRect(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+            child: Material(
+              color: Colors.white,
+              child: BudgetSettingsSheet(
+                month: month,
+                initialBudgets: monthBudgets,
+                categorySuggestions: categorySuggestions,
+                onSave: (budgets) => _saveBudgetsForMonth(month, budgets),
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 
   void _openSmsPage() {
@@ -362,7 +451,7 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
       widget.onRequireFeatureOnboarding();
       return;
     }
-    _consumePendingMmsOnly();
+    _consumePendingRealtimeMessages();
     setState(() => _routeStack.add(const _ShellRoute.smsInbox()));
   }
 
@@ -372,7 +461,7 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
       widget.onRequireFeatureOnboarding();
       return;
     }
-    await _consumePendingMmsOnly();
+    await _consumePendingRealtimeMessages();
     if (!mounted) return;
     setState(() {
       if (_currentRoute.kind == _ShellRouteKind.smsInbox) return;
@@ -394,6 +483,14 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
     setState(() {
       _smsDrafts = _smsDrafts.where((draft) => !ids.contains(draft.id)).toList();
     });
+  }
+
+  Future<void> _quickAutoInputDraft(WalletKeeperSmsDraft draft) async {
+    await _saveEntry(
+      draft.toEntry(),
+      consumedDraftId: draft.id,
+      stayOnCurrentRoute: true,
+    );
   }
 
   Future<void> _saveSmsSettings(WalletKeeperSmsSettings settings) async {
@@ -435,22 +532,28 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
     if (_pendingMmsTimer != null) return;
     _pendingMmsTimer = Timer.periodic(const Duration(seconds: 2), (_) {
       if (!mounted) return;
-      _consumePendingMmsOnly();
+      _consumePendingRealtimeMessages();
     });
   }
 
-  Future<void> _consumePendingMmsOnly() async {
+  Future<void> _consumePendingRealtimeMessages() async {
     if (!Platform.isAndroid ||
         !widget.featureAccess.smsAutomationEnabled ||
         !_smsSettings.smsReceiveEnabled) {
       return;
     }
     final pendingMms = await _smsAutomationRepository.consumePendingMms();
-    if (pendingMms.isEmpty) return;
+    final pendingNotifications =
+        _financialAppNotificationEnabled
+            ? await _smsAutomationRepository.consumePendingAppNotifications()
+            : const <WalletKeeperSmsDraft>[];
+    final pendingMessages = [...pendingMms, ...pendingNotifications]
+      ..sort((a, b) => b.date.compareTo(a.date));
+    if (pendingMessages.isEmpty) return;
     if (_smsSettings.autoInputEnabled) {
       var draftsChanged = false;
       var entriesChanged = false;
-      for (final draft in pendingMms) {
+      for (final draft in pendingMessages) {
         final result = await _smsAutomationRepository.handleIncomingDraft(
           draft,
           autoSaveToLedger: true,
@@ -474,7 +577,7 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
       }
       return;
     }
-    final merged = await _smsAutomationRepository.saveInboxDrafts(pendingMms);
+    final merged = await _smsAutomationRepository.saveInboxDrafts(pendingMessages);
     if (!mounted) return;
     setState(() => _smsDrafts = merged);
   }
@@ -571,14 +674,13 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
           OverviewPage(
             summary: summary,
             entries: _entries,
-            memos: _memos,
+            budgets: _budgets,
             smsDraftCount: _smsDrafts.length,
-            onEdit: ({existing}) => _openComposer(existing: existing),
-            onOpenMemoComposer: ({memo, required month}) =>
-                _openMemoComposer(existing: memo, month: month),
+            onEdit: ({existing}) => _showEntryEditorSheet(existing: existing),
+            onOpenBudgetSettings: ({required month}) =>
+                _showBudgetSettingsSheet(month: month),
             onOpenSmsPage: _openSmsPage,
             onDelete: _deleteEntry,
-            onDeleteMemo: _deleteMemo,
           ),
           StatsPage(
             entries: _entries,
@@ -586,6 +688,7 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
           AssetPage(
             entries: _entries,
             session: _session,
+            onOpenFlowHistory: () => setState(() => _routeStack.add(const _ShellRoute.assetFlowHistory())),
           ),
           SettingsPage(
             session: _session,
@@ -610,7 +713,7 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
           onImportRecent: _importRecentSms,
           onOpenDraft: (draft) => _openComposer(smsDraft: draft),
           onRequestSmsAccess: widget.onRequestFeatureAccess,
-          onPasteMessage: () => showAppToast('문자 복사붙여넣기는 다음 디자인에서 연결합니다.'),
+          onQuickAutoInput: _quickAutoInputDraft,
           onDeleteSelected: _deleteSelectedSmsDrafts,
         );
         break;
@@ -637,6 +740,12 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
           onBack: () => setState(() => _routeStack.removeLast()),
         );
         break;
+      case _ShellRouteKind.assetFlowHistory:
+        page = AssetFlowHistoryPage(
+          entries: _entries,
+          onBack: () => setState(() => _routeStack.removeLast()),
+        );
+        break;
       case _ShellRouteKind.editor:
         page = EntryEditorPage(
           key: _editorPageKey,
@@ -660,14 +769,6 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
             entry,
             consumedDraftId: _currentRoute.smsDraft?.id,
           ),
-        );
-        break;
-      case _ShellRouteKind.memoEditor:
-        page = MemoEditorPage(
-          existing: _currentRoute.memo,
-          month: _currentRoute.month ?? DateTime.now(),
-          onBack: () => setState(() => _routeStack.removeLast()),
-          onSave: _saveMemo,
         );
         break;
     }

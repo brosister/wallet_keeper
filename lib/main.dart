@@ -21,6 +21,7 @@ import 'package:intl/intl.dart';
 import 'package:kakao_flutter_sdk/kakao_flutter_sdk.dart';
 import 'package:naver_login_sdk/naver_login_sdk.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:photo_manager/photo_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:uuid/uuid.dart';
@@ -33,6 +34,7 @@ part 'src/ledger_domain.dart';
 
 const _storageKey = 'wallet_keeper_entries_v1';
 const _memoStorageKey = 'wallet_keeper_memos_v1';
+const _budgetStorageKey = 'wallet_keeper_budgets_v1';
 const _walletKeeperBottomNavSectionHeight = 112.0;
 const _walletKeeperAdSettingsUri = 'https://app-master.officialsite.kr/api/wallet-keeper/ad-settings';
 const _walletKeeperSmsReportUri = 'https://app-master.officialsite.kr/api/wallet-keeper/sms-reports';

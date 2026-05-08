@@ -1,5 +1,7 @@
 part of '../main.dart';
 
+final Map<String, Future<Uint8List?>> _walletKeeperAppIconFutureCache = {};
+
 class PlaceholderTabPage extends StatelessWidget {
   const PlaceholderTabPage({
     super.key,
@@ -79,11 +81,17 @@ class StatsPage extends StatefulWidget {
   State<StatsPage> createState() => _StatsPageState();
 }
 
+enum _StatsRangeMode { weekly, monthly, yearly, custom }
+
 class _StatsPageState extends State<StatsPage> {
   late DateTime _selectedMonth;
+  late DateTime _selectedWeekAnchor;
+  late int _selectedYear;
+  late DateTime _customStart;
+  late DateTime _customEnd;
+  _StatsRangeMode _rangeMode = _StatsRangeMode.monthly;
   int _selectedKind = 1;
   int? _selectedCategoryIndex;
-  final ScrollController _categoryScrollController = ScrollController();
   final List<GlobalKey> _categoryRowKeys = <GlobalKey>[];
 
   @override
@@ -91,19 +99,170 @@ class _StatsPageState extends State<StatsPage> {
     super.initState();
     final now = DateTime.now();
     _selectedMonth = DateTime(now.year, now.month);
+    _selectedWeekAnchor = _startOfWeek(now);
+    _selectedYear = now.year;
+    _customStart = DateTime(now.year, 1, 1);
+    _customEnd = DateTime(now.year, now.month, now.day);
   }
 
-  @override
-  void dispose() {
-    _categoryScrollController.dispose();
-    super.dispose();
-  }
-
-  void _moveMonth(int offset) {
+  void _movePeriod(int offset) {
     setState(() {
-      _selectedMonth = DateTime(_selectedMonth.year, _selectedMonth.month + offset);
+      switch (_rangeMode) {
+        case _StatsRangeMode.weekly:
+          _selectedWeekAnchor = _startOfWeek(
+            _selectedWeekAnchor.add(Duration(days: offset * 7)),
+          );
+        case _StatsRangeMode.monthly:
+          _selectedMonth = DateTime(
+            _selectedMonth.year,
+            _selectedMonth.month + offset,
+          );
+        case _StatsRangeMode.yearly:
+          _selectedYear += offset;
+        case _StatsRangeMode.custom:
+          break;
+      }
       _selectedCategoryIndex = 0;
     });
+  }
+
+  void _selectRangeMode(_StatsRangeMode mode) {
+    if (_rangeMode == mode) return;
+    final now = DateTime.now();
+    setState(() {
+      _rangeMode = mode;
+      if (mode == _StatsRangeMode.weekly) {
+        _selectedWeekAnchor = _startOfWeek(now);
+      } else if (mode == _StatsRangeMode.monthly) {
+        _selectedMonth = DateTime(now.year, now.month);
+      } else if (mode == _StatsRangeMode.yearly) {
+        _selectedYear = now.year;
+      } else if (mode == _StatsRangeMode.custom) {
+        _customStart = DateTime(now.year, 1, 1);
+        _customEnd = DateTime(now.year, now.month, now.day);
+      }
+      _selectedCategoryIndex = 0;
+    });
+  }
+
+  DateTime get _periodStart {
+    switch (_rangeMode) {
+      case _StatsRangeMode.weekly:
+        return _selectedWeekAnchor;
+      case _StatsRangeMode.monthly:
+        return DateTime(_selectedMonth.year, _selectedMonth.month, 1);
+      case _StatsRangeMode.yearly:
+        return DateTime(_selectedYear, 1, 1);
+      case _StatsRangeMode.custom:
+        return DateTime(_customStart.year, _customStart.month, _customStart.day);
+    }
+  }
+
+  DateTime get _periodEnd {
+    switch (_rangeMode) {
+      case _StatsRangeMode.weekly:
+        return DateTime(
+          _selectedWeekAnchor.year,
+          _selectedWeekAnchor.month,
+          _selectedWeekAnchor.day + 6,
+          23,
+          59,
+          59,
+        );
+      case _StatsRangeMode.monthly:
+        return DateTime(_selectedMonth.year, _selectedMonth.month + 1, 0, 23, 59, 59);
+      case _StatsRangeMode.yearly:
+        return DateTime(_selectedYear, 12, 31, 23, 59, 59);
+      case _StatsRangeMode.custom:
+        return DateTime(_customEnd.year, _customEnd.month, _customEnd.day, 23, 59, 59);
+    }
+  }
+
+  String get _periodHeaderLabel {
+    switch (_rangeMode) {
+      case _StatsRangeMode.weekly:
+        final end = _periodEnd;
+        return '${DateFormat('yy.MM.dd').format(_periodStart)} ~ ${DateFormat('yy.MM.dd').format(end)}';
+      case _StatsRangeMode.monthly:
+        return DateFormat('yyyy년 M월', 'ko_KR').format(_selectedMonth);
+      case _StatsRangeMode.yearly:
+        return '$_selectedYear년';
+      case _StatsRangeMode.custom:
+        return '';
+    }
+  }
+
+  String get _periodCardLabel {
+    switch (_rangeMode) {
+      case _StatsRangeMode.weekly:
+        final end = _periodEnd;
+        return '${DateFormat('M.d').format(_periodStart)} ~ ${DateFormat('M.d').format(end)}';
+      case _StatsRangeMode.monthly:
+        return DateFormat('M월', 'ko_KR').format(_selectedMonth);
+      case _StatsRangeMode.yearly:
+        return '$_selectedYear년';
+      case _StatsRangeMode.custom:
+        return '${DateFormat('yy.MM.dd').format(_customStart)} ~ ${DateFormat('yy.MM.dd').format(_customEnd)}';
+    }
+  }
+
+  bool get _canMoveForward {
+    final now = DateTime.now();
+    switch (_rangeMode) {
+      case _StatsRangeMode.weekly:
+        return _startOfWeek(now).isAfter(_selectedWeekAnchor);
+      case _StatsRangeMode.monthly:
+        final currentMonth = DateTime(now.year, now.month);
+        return currentMonth.isAfter(DateTime(_selectedMonth.year, _selectedMonth.month));
+      case _StatsRangeMode.yearly:
+        return _selectedYear < now.year;
+      case _StatsRangeMode.custom:
+        return false;
+    }
+  }
+
+  Future<void> _pickCustomDate({required bool isStart}) async {
+    final initialDate = isStart ? _customStart : _customEnd;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: Color(0xFFFF6A5F),
+              surface: Colors.white,
+            ),
+            dialogTheme: const DialogThemeData(
+              backgroundColor: Colors.white,
+            ),
+          ),
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
+    );
+    if (picked == null) return;
+    setState(() {
+      if (isStart) {
+        _customStart = DateTime(picked.year, picked.month, picked.day);
+        if (_customStart.isAfter(_customEnd)) {
+          _customEnd = _customStart;
+        }
+      } else {
+        _customEnd = DateTime(picked.year, picked.month, picked.day);
+        if (_customEnd.isBefore(_customStart)) {
+          _customStart = _customEnd;
+        }
+      }
+      _selectedCategoryIndex = 0;
+    });
+  }
+
+  static DateTime _startOfWeek(DateTime date) {
+    final day = DateTime(date.year, date.month, date.day);
+    return day.subtract(Duration(days: day.weekday % 7));
   }
 
   void _syncCategoryKeys(int length) {
@@ -123,14 +282,16 @@ class _StatsPageState extends State<StatsPage> {
     if (itemCount == 0) return;
     final clampedIndex = index.clamp(0, itemCount - 1);
     if (!mounted) return;
+    final shouldClear = _selectedCategoryIndex == clampedIndex;
     setState(() {
-      _selectedCategoryIndex = clampedIndex;
+      _selectedCategoryIndex = shouldClear ? null : clampedIndex;
     });
+    if (shouldClear) return;
     if (!shouldScrollList) return;
-    final context = _categoryRowKeys[clampedIndex].currentContext;
-    if (context == null) return;
+    final targetContext = _categoryRowKeys[clampedIndex].currentContext;
+    if (targetContext == null) return;
     await Scrollable.ensureVisible(
-      context,
+      targetContext,
       alignment: 0,
       duration: const Duration(milliseconds: 320),
       curve: Curves.easeOutCubic,
@@ -145,23 +306,30 @@ class _StatsPageState extends State<StatsPage> {
     });
   }
 
+  void _clearSelectedCategory() {
+    if (_selectedCategoryIndex == null) return;
+    setState(() {
+      _selectedCategoryIndex = null;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    final monthEntries = widget.entries
+    final periodEntries = widget.entries
         .where(
           (entry) =>
-              entry.date.year == _selectedMonth.year &&
-              entry.date.month == _selectedMonth.month,
+              !entry.date.isBefore(_periodStart) &&
+              !entry.date.isAfter(_periodEnd),
         )
         .toList();
-    final incomeTotal = monthEntries
+    final incomeTotal = periodEntries
         .where((entry) => entry.type == EntryType.income)
         .fold<double>(0, (sum, entry) => sum + entry.amount);
-    final expenseTotal = monthEntries
+    final expenseTotal = periodEntries
         .where((entry) => entry.type == EntryType.expense)
         .fold<double>(0, (sum, entry) => sum + entry.amount);
     final targetType = _selectedKind == 0 ? EntryType.income : EntryType.expense;
-    final filtered = monthEntries.where((entry) => entry.type == targetType).toList();
+    final filtered = periodEntries.where((entry) => entry.type == targetType).toList();
     final total = filtered.fold<double>(0, (sum, entry) => sum + entry.amount);
     final byCategory = <String, double>{};
     for (final entry in filtered) {
@@ -175,6 +343,9 @@ class _StatsPageState extends State<StatsPage> {
     final selectedItem = items.isEmpty ? null : items[selectedIndex];
     final selectedRatio = selectedItem == null || total == 0 ? 0.0 : selectedItem.value / total;
     final bottomInset = bottomOverlayHeightOf(context);
+    final selectedColor = _selectedKind == 0 ? const Color(0xFF6C9CFF) : const Color(0xFFFF6A5F);
+    final statsPalette =
+        _selectedKind == 0 ? _statsIncomePalette : _statsExpensePalette;
 
     return Container(
       color: const Color(0xFFF7F8FA),
@@ -188,62 +359,134 @@ class _StatsPageState extends State<StatsPage> {
                 height: 44,
                 child: Row(
                   children: [
-                    GestureDetector(
-                      onTap: () => _moveMonth(-1),
-                      child: const Icon(
-                        Icons.chevron_left_rounded,
-                        size: 30,
-                        color: Color(0xFF14171C),
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      DateFormat('yyyy년 M월', 'ko_KR').format(_selectedMonth),
-                      style: const TextStyle(
-                        color: Color(0xFF14171C),
-                        fontSize: 17,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(width: 2),
-                    GestureDetector(
-                      onTap: () => _moveMonth(1),
-                      child: const Icon(
-                        Icons.chevron_right_rounded,
-                        size: 30,
-                        color: Color(0xFF14171C),
-                      ),
-                    ),
-                    const Spacer(),
-                    Container(
-                      height: 30,
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: const Color(0xFFD9DEE6),
-                          width: 1.1,
-                        ),
-                      ),
-                      child: const Row(
-                        children: [
-                          Text(
-                            '월간',
-                            style: TextStyle(
-                              color: Color(0xFF14171C),
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
+                    Expanded(
+                      child: _rangeMode == _StatsRangeMode.custom
+                          ? Row(
+                              children: [
+                                const SizedBox(width: 20),
+                                Flexible(
+                                  child: _StatsDateRangeField(
+                                    value: DateFormat('yy.MM.dd').format(_customStart),
+                                    onTap: () => _pickCustomDate(isStart: true),
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                const Text(
+                                  '~',
+                                  style: TextStyle(
+                                    color: Color(0xFF7B8491),
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                Flexible(
+                                  child: _StatsDateRangeField(
+                                    value: DateFormat('yy.MM.dd').format(_customEnd),
+                                    onTap: () => _pickCustomDate(isStart: false),
+                                  ),
+                                ),
+                              ],
+                            )
+                          : Align(
+                              alignment: Alignment.centerLeft,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  GestureDetector(
+                                    onTap: () => _movePeriod(-1),
+                                    child: const Icon(
+                                      Icons.chevron_left_rounded,
+                                      size: 30,
+                                      color: Color(0xFF14171C),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    _periodHeaderLabel,
+                                    maxLines: 1,
+                                    softWrap: false,
+                                    style: const TextStyle(
+                                      color: Color(0xFF14171C),
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 2),
+                                  GestureDetector(
+                                    onTap: _canMoveForward ? () => _movePeriod(1) : null,
+                                    child: Icon(
+                                      Icons.chevron_right_rounded,
+                                      size: 30,
+                                      color: _canMoveForward
+                                          ? const Color(0xFF14171C)
+                                          : const Color(0xFFCDD4DE),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
+                    ),
+                    const SizedBox(width: 8),
+                    PopupMenuButton<_StatsRangeMode>(
+                      onSelected: _selectRangeMode,
+                      color: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      itemBuilder: (context) => const [
+                        PopupMenuItem(
+                          value: _StatsRangeMode.weekly,
+                          child: Text('주간'),
+                        ),
+                        PopupMenuItem(
+                          value: _StatsRangeMode.monthly,
+                          child: Text('월간'),
+                        ),
+                        PopupMenuItem(
+                          value: _StatsRangeMode.yearly,
+                          child: Text('연간'),
+                        ),
+                        PopupMenuItem(
+                          value: _StatsRangeMode.custom,
+                          child: Text('기간'),
+                        ),
+                      ],
+                      child: Container(
+                        height: 30,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: const Color(0xFFD9DEE6),
+                            width: 1.1,
                           ),
-                          SizedBox(width: 2),
-                          Icon(
-                            Icons.keyboard_arrow_down_rounded,
-                            color: Color(0xFF14171C),
-                            size: 16,
-                          ),
-                        ],
+                        ),
+                        child: Row(
+                          children: [
+                            Text(
+                              switch (_rangeMode) {
+                                _StatsRangeMode.weekly => '주간',
+                                _StatsRangeMode.monthly => '월간',
+                                _StatsRangeMode.yearly => '연간',
+                                _StatsRangeMode.custom => '기간',
+                              },
+                              style: const TextStyle(
+                                color: Color(0xFF14171C),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(width: 2),
+                            const Icon(
+                              Icons.keyboard_arrow_down_rounded,
+                              color: Color(0xFF14171C),
+                              size: 14,
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ],
@@ -252,23 +495,28 @@ class _StatsPageState extends State<StatsPage> {
             ),
           ),
           Expanded(
-            child: ListView(
-              padding: EdgeInsets.fromLTRB(16, 8, 16, bottomInset + 18),
-              children: [
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTap: _clearSelectedCategory,
+              child: ListView(
+                padding: EdgeInsets.fromLTRB(16, 8, 16, bottomInset + 18),
+                children: [
                 Row(
                   children: [
-                    _StatsToggleChip(
+                    _StatsSummaryCard(
                       label: '수입',
-                      value: formatCurrency(incomeTotal),
+                      value: _formatStatsWon(incomeTotal),
                       selected: _selectedKind == 0,
                       onTap: () => _selectKind(0),
+                      color: const Color(0xFF6C9CFF),
                     ),
                     const SizedBox(width: 8),
-                    _StatsToggleChip(
+                    _StatsSummaryCard(
                       label: '지출',
-                      value: formatCurrency(expenseTotal),
+                      value: _formatStatsWon(expenseTotal),
                       selected: _selectedKind == 1,
                       onTap: () => _selectKind(1),
+                      color: const Color(0xFFFF6A5F),
                     ),
                   ],
                 ),
@@ -278,7 +526,7 @@ class _StatsPageState extends State<StatsPage> {
                     padding: const EdgeInsets.fromLTRB(18, 24, 18, 24),
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(22),
+                      borderRadius: BorderRadius.circular(24),
                       border: Border.all(color: const Color(0xFFE6EAF0)),
                     ),
                     child: const Center(
@@ -292,53 +540,91 @@ class _StatsPageState extends State<StatsPage> {
                       ),
                     ),
                   )
-                else ...[
-                  _StatsOverviewCard(
-                    items: items,
-                    total: total,
-                    targetType: targetType,
-                    selectedIndex: selectedIndex,
-                    selectedItem: selectedItem,
-                    selectedRatio: selectedRatio,
-                    onSegmentTap: (index) => _selectCategory(
-                      index,
-                      itemCount: items.length,
-                      shouldScrollList: true,
-                    ),
-                    animationKey:
-                        '${_selectedMonth.year}-${_selectedMonth.month}-$_selectedKind-${items.length}-${total.toStringAsFixed(0)}',
-                  ),
-                  const SizedBox(height: 14),
+                else
                   Container(
+                    padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(22),
+                      borderRadius: BorderRadius.circular(24),
                       border: Border.all(color: const Color(0xFFE6EAF0)),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x0A14171C),
+                          blurRadius: 18,
+                          offset: Offset(0, 8),
+                        ),
+                      ],
                     ),
                     child: Column(
-                      children: items.asMap().entries.map((entry) {
-                        final index = entry.key;
-                        final item = entry.value;
-                        final ratio = total == 0 ? 0.0 : item.value / total;
-                        return _StatsCategoryRow(
-                          key: _categoryRowKeys[index],
-                          item: item,
-                          ratio: ratio,
-                          isLast: index == items.length - 1,
-                          color: _statsPalette[index % _statsPalette.length],
-                          selected: index == selectedIndex,
-                          dimmed: selectedIndex >= 0 && index != selectedIndex,
-                          onTap: () => _selectCategory(
-                            index,
-                            itemCount: items.length,
-                            shouldScrollList: false,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              targetType == EntryType.income ? '수입 분석' : '지출 분석',
+                              style: const TextStyle(
+                                color: Color(0xFF14171C),
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            const Spacer(),
+                            Text(
+                              _periodCardLabel,
+                              style: const TextStyle(
+                                color: Color(0xFF8E939D),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 18),
+                        Center(
+                          child: _StatsDonutSection(
+                            items: items,
+                            total: total,
+                            selectedIndex: selectedIndex,
+                            selectedItem: selectedItem!,
+                            selectedRatio: selectedRatio,
+                            accentColor: selectedColor,
+                            colors: statsPalette,
+                            onBackgroundTap: _clearSelectedCategory,
+                            animationKey:
+                                '${_rangeMode.name}-${_periodStart.toIso8601String()}-${_periodEnd.toIso8601String()}-$_selectedKind-${items.length}-${total.toStringAsFixed(0)}',
+                            onSegmentTap: (index) => _selectCategory(
+                              index,
+                              itemCount: items.length,
+                              shouldScrollList: true,
+                            ),
                           ),
-                        );
-                      }).toList(),
+                        ),
+                        const SizedBox(height: 18),
+                        Column(
+                          children: items.asMap().entries.map((entry) {
+                            final index = entry.key;
+                            final item = entry.value;
+                            final ratio = total == 0 ? 0.0 : item.value / total;
+                            return _StatsLegendRow(
+                              key: _categoryRowKeys[index],
+                              item: item,
+                              ratio: ratio,
+                              color: statsPalette[index % statsPalette.length],
+                              selected: index == selectedIndex,
+                              dimmed: selectedIndex >= 0 && index != selectedIndex,
+                              onTap: () => _selectCategory(
+                                index,
+                                itemCount: items.length,
+                                shouldScrollList: false,
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ],
                     ),
                   ),
                 ],
-              ],
+              ),
             ),
           ),
         ],
@@ -347,51 +633,88 @@ class _StatsPageState extends State<StatsPage> {
   }
 }
 
-class _StatsToggleChip extends StatelessWidget {
-  const _StatsToggleChip({
+class _StatsSummaryCard extends StatelessWidget {
+  const _StatsSummaryCard({
     required this.label,
     required this.selected,
     required this.onTap,
     required this.value,
+    required this.color,
   });
 
   final String label;
   final bool selected;
   final VoidCallback onTap;
   final String value;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
     return Expanded(
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 11),
-          decoration: BoxDecoration(
-            color: selected ? const Color(0xFFFFF1EF) : const Color(0xFFF7F8FA),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: selected ? const Color(0xFFFFD5D1) : const Color(0xFFE6EAF0),
-            ),
+        borderRadius: BorderRadius.circular(20),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+            decoration: BoxDecoration(
+            color: selected ? color : Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+              color: selected ? color : const Color(0xFFE6EAF0),
+              ),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x0814171C),
+                blurRadius: 14,
+                offset: Offset(0, 6),
+              ),
+            ],
           ),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                label,
-                style: TextStyle(
-                  color: selected ? const Color(0xFF14171C) : const Color(0xFF868A93),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                ),
+              Row(
+                children: [
+                  Container(
+                    width: 16,
+                    height: 16,
+                    decoration: BoxDecoration(
+                      color: selected ? Colors.white.withValues(alpha: 0.22) : color.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                    child: Icon(
+                      label == '수입' ? Icons.south_west_rounded : Icons.north_east_rounded,
+                      size: 11,
+                      color: selected ? Colors.white : color,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      color: selected ? Colors.white : color,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const Spacer(),
+                  if (!selected)
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFD8DDE5),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                ],
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 10),
               Text(
                 value,
                 style: TextStyle(
-                  color: selected ? const Color(0xFFFF6A5F) : const Color(0xFF14171C),
-                  fontSize: 12,
+                  color: selected ? Colors.white : const Color(0xFF14171C),
+                  fontSize: 17,
                   fontWeight: FontWeight.w800,
                 ),
               ),
@@ -403,174 +726,195 @@ class _StatsToggleChip extends StatelessWidget {
   }
 }
 
-class _StatsOverviewCard extends StatelessWidget {
-  const _StatsOverviewCard({
-    required this.items,
-    required this.total,
-    required this.targetType,
-    required this.animationKey,
-    required this.selectedIndex,
-    required this.selectedItem,
-    required this.selectedRatio,
-    required this.onSegmentTap,
+class _StatsDateRangeField extends StatelessWidget {
+  const _StatsDateRangeField({
+    required this.value,
+    required this.onTap,
   });
 
-  final List<MapEntry<String, double>> items;
-  final double total;
-  final EntryType targetType;
-  final String animationKey;
-  final int selectedIndex;
-  final MapEntry<String, double>? selectedItem;
-  final double selectedRatio;
-  final ValueChanged<int> onSegmentTap;
+  final String value;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final focusItem = selectedItem ?? items.first;
-    final focusRatio = selectedItem == null
-        ? (total == 0 ? 0.0 : items.first.value / total)
-        : selectedRatio;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0xFFE6EAF0)),
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    targetType == EntryType.income ? '수입 분석' : '지출 분석',
-                    style: const TextStyle(
-                      color: Color(0xFF14171C),
-                      fontSize: 15,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '총 ${formatCurrency(total)}',
-                    style: const TextStyle(
-                      color: Color(0xFF7D8591),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-              const Spacer(),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFF1EF),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  '${(focusRatio * 100).toStringAsFixed(0)}%',
+    return Material(
+      type: MaterialType.transparency,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 4),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  value,
+                  maxLines: 1,
+                  softWrap: false,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    color: Color(0xFFFF6A5F),
-                    fontSize: 12,
+                    color: Color(0xFF14171C),
+                    fontSize: 18,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          TweenAnimationBuilder<double>(
-            key: ValueKey(animationKey),
-            tween: Tween(begin: 0, end: 1),
-            duration: const Duration(milliseconds: 850),
-            curve: Curves.easeOutCubic,
-            builder: (context, progress, _) {
-              return GestureDetector(
-                onTapUp: (details) {
-                  final index = _StatsDonutPainter.hitTestSegment(
-                    size: const Size(220, 220),
-                    position: details.localPosition,
-                    values: items.map((item) => item.value).toList(),
-                  );
-                  if (index != null) {
-                    onSegmentTap(index);
-                  }
-                },
-                child: SizedBox(
-                  width: 220,
-                  height: 220,
-                  child: CustomPaint(
-                    painter: _StatsDonutPainter(
-                      values: items.map((item) => item.value).toList(),
-                      colors: List.generate(
-                        items.length,
-                        (index) =>
-                            _statsPalette[index % _statsPalette.length],
-                      ),
-                      progress: progress,
-                      selectedIndex: selectedIndex,
-                    ),
-                    child: Center(
-                      child: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 260),
-                        switchInCurve: Curves.easeOutCubic,
-                        switchOutCurve: Curves.easeOutCubic,
-                        child: Column(
-                          key: ValueKey('${focusItem.key}-${focusItem.value}'),
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              '${_categoryEmoji(focusItem.key)} ${focusItem.key}',
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: Color(0xFF14171C),
-                                fontSize: 15,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              formatCurrency(focusItem.value),
-                              style: const TextStyle(
-                                color: Color(0xFF14171C),
-                                fontSize: 18,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              '전체의 ${(focusRatio * 100).toStringAsFixed(1)}%',
-                              style: const TextStyle(
-                                color: Color(0xFF7D8591),
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
+                const SizedBox(width: 4),
+                const Icon(
+                  Icons.calendar_month_rounded,
+                  size: 18,
+                  color: Color(0xFF8D97A5),
                 ),
-              );
-            },
+              ],
+            ),
           ),
-        ],
+        ),
       ),
     );
   }
 }
 
-class _StatsCategoryRow extends StatelessWidget {
-  const _StatsCategoryRow({
+class _StatsDonutSection extends StatelessWidget {
+  const _StatsDonutSection({
+    required this.items,
+    required this.total,
+    required this.animationKey,
+    required this.selectedIndex,
+    required this.selectedItem,
+    required this.selectedRatio,
+    required this.onSegmentTap,
+    required this.accentColor,
+    required this.onBackgroundTap,
+    required this.colors,
+  });
+
+  final List<MapEntry<String, double>> items;
+  final double total;
+  final String animationKey;
+  final int selectedIndex;
+  final MapEntry<String, double> selectedItem;
+  final double selectedRatio;
+  final ValueChanged<int> onSegmentTap;
+  final Color accentColor;
+  final VoidCallback onBackgroundTap;
+  final List<Color> colors;
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      key: ValueKey(animationKey),
+      tween: Tween(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 850),
+      curve: Curves.easeOutCubic,
+      builder: (context, progress, _) {
+        return TweenAnimationBuilder<double>(
+          key: ValueKey('$animationKey-$selectedIndex'),
+          tween: Tween(begin: 0, end: 1),
+          duration: const Duration(milliseconds: 280),
+          curve: Curves.easeOutCubic,
+          builder: (context, selectionProgress, child) {
+            return GestureDetector(
+              onTapUp: (details) {
+                final index = _StatsDonutPainter.hitTestSegment(
+                  size: const Size(212, 212),
+                  position: details.localPosition,
+                  values: items.map((item) => item.value).toList(),
+                );
+                if (index != null) {
+                  onSegmentTap(index);
+                  return;
+                }
+                onBackgroundTap();
+              },
+              child: SizedBox(
+                width: 212,
+                height: 212,
+                child: CustomPaint(
+                  painter: _StatsDonutPainter(
+                    values: items.map((item) => item.value).toList(),
+                    colors: List.generate(
+                      items.length,
+                      (index) => colors[index % colors.length],
+                    ),
+                    progress: progress,
+                    selectedIndex: selectedIndex,
+                    selectionProgress: selectionProgress,
+                  ),
+                  child: Center(
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 260),
+                      switchInCurve: Curves.easeOutCubic,
+                      switchOutCurve: Curves.easeOutCubic,
+                      transitionBuilder: (child, animation) {
+                        return FadeTransition(
+                          opacity: animation,
+                          child: SlideTransition(
+                            position: Tween<Offset>(
+                              begin: const Offset(0, 0.06),
+                              end: Offset.zero,
+                            ).animate(animation),
+                            child: child,
+                          ),
+                        );
+                      },
+                      child: Column(
+                        key: ValueKey('${selectedItem.key}-${selectedItem.value}'),
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Text(
+                            '총 지출',
+                            style: TextStyle(
+                              color: Color(0xFF8F96A3),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _formatStatsWon(total),
+                            style: TextStyle(
+                              color: accentColor,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            selectedItem.key,
+                            style: const TextStyle(
+                              color: Color(0xFF14171C),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          Text(
+                            _formatStatsRatio(selectedRatio),
+                            style: const TextStyle(
+                              color: Color(0xFF8F96A3),
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _StatsLegendRow extends StatelessWidget {
+  const _StatsLegendRow({
     super.key,
     required this.item,
     required this.ratio,
-    required this.isLast,
     required this.color,
     required this.selected,
     required this.dimmed,
@@ -579,7 +923,6 @@ class _StatsCategoryRow extends StatelessWidget {
 
   final MapEntry<String, double> item;
   final double ratio;
-  final bool isLast;
   final Color color;
   final bool selected;
   final bool dimmed;
@@ -588,21 +931,17 @@ class _StatsCategoryRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final row = AnimatedScale(
-      scale: selected ? 1.02 : 1,
+      scale: selected ? 1.015 : 1,
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOutCubic,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 220),
         curve: Curves.easeOutCubic,
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        padding: const EdgeInsets.fromLTRB(8, 10, 10, 10),
         decoration: BoxDecoration(
-          color: selected ? const Color(0xFFFFF7F6) : Colors.transparent,
-          border: Border(
-            bottom: BorderSide(
-              color: isLast ? Colors.transparent : const Color(0xFFE6EAF0),
-            ),
-                          ),
-                        ),
+          color: selected ? const Color(0xFFFFF5F3) : Colors.transparent,
+          borderRadius: BorderRadius.circular(14),
+        ),
         child: Row(
           children: [
             Container(
@@ -615,65 +954,62 @@ class _StatsCategoryRow extends StatelessWidget {
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '${_categoryEmoji(item.key)} ${item.key}',
-                    style: const TextStyle(
-                      color: Color(0xFF14171C),
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(99),
-                    child: LinearProgressIndicator(
-                      value: ratio.clamp(0.0, 1.0).toDouble(),
-                      minHeight: 6,
-                      backgroundColor: const Color(0xFFF1F3F7),
-                      valueColor: AlwaysStoppedAnimation<Color>(color),
-                    ),
-                  ),
-                ],
+              child: Text(
+                item.key,
+                style: const TextStyle(
+                  color: Color(0xFF14171C),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
-            const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  formatCurrency(item.value),
-                  style: const TextStyle(
-                    color: Color(0xFF14171C),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                  ),
+            SizedBox(
+              width: 54,
+              child: Text(
+                _formatStatsRatio(ratio),
+                textAlign: TextAlign.right,
+                style: const TextStyle(
+                  color: Color(0xFF8B93A0),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  '${(ratio * 100).toStringAsFixed(1)}%',
-                  style: const TextStyle(
-                    color: Color(0xFF8B93A0),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                          ),
-                        ),
-              ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            SizedBox(
+              width: 108,
+              child: Text(
+                _formatStatsWon(item.value),
+                textAlign: TextAlign.right,
+                style: const TextStyle(
+                  color: Color(0xFF14171C),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ],
         ),
       ),
     );
-      return InkWell(
-        onTap: onTap,
-        child: AnimatedOpacity(
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      splashFactory: NoSplash.splashFactory,
+      splashColor: Colors.transparent,
+      highlightColor: Colors.transparent,
+      hoverColor: Colors.transparent,
+      focusColor: Colors.transparent,
+      child: AnimatedOpacity(
         duration: const Duration(milliseconds: 220),
-        opacity: dimmed ? 0.42 : 1,
+        opacity: dimmed ? 0.45 : 1,
         child: ImageFiltered(
           imageFilter: dimmed
-              ? ImageFilter.blur(sigmaX: 0.8, sigmaY: 0.8)
+              ? ImageFilter.blur(sigmaX: 0.75, sigmaY: 0.75)
               : ImageFilter.blur(sigmaX: 0, sigmaY: 0),
           child: row,
         ),
@@ -688,12 +1024,14 @@ class _StatsDonutPainter extends CustomPainter {
     required this.colors,
     required this.progress,
     required this.selectedIndex,
+    required this.selectionProgress,
   });
 
   final List<double> values;
   final List<Color> colors;
   final double progress;
   final int selectedIndex;
+  final double selectionProgress;
 
   static int? hitTestSegment({
     required Size size,
@@ -705,8 +1043,8 @@ class _StatsDonutPainter extends CustomPainter {
     final center = Offset(size.width / 2, size.height / 2);
     final vector = position - center;
     final distance = vector.distance;
-    final outerRadius = size.width / 2 - 26;
-    const maxStroke = 34.0;
+    final outerRadius = size.width / 2 - 24;
+    const maxStroke = 30.0;
     final innerRadius = outerRadius - maxStroke;
     if (distance < innerRadius || distance > outerRadius + (maxStroke / 2)) {
       return null;
@@ -728,29 +1066,55 @@ class _StatsDonutPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final total = values.fold<double>(0, (sum, value) => sum + value);
     if (total <= 0) return;
-    const baseStrokeWidth = 26.0;
-    const selectedStrokeWidth = 34.0;
-    final rect = Rect.fromCircle(
+    const baseStrokeWidth = 24.0;
+    const selectedStrokeWidth = 30.0;
+    const selectedOuterExtension = 10.0;
+    final baseRadius = size.width / 2 - selectedStrokeWidth;
+    final baseInnerRadius = baseRadius - (baseStrokeWidth / 2);
+    final baseRect = Rect.fromCircle(
       center: Offset(size.width / 2, size.height / 2),
-      radius: size.width / 2 - selectedStrokeWidth,
+      radius: baseRadius,
     );
     final backgroundPaint = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
+      ..strokeCap = StrokeCap.butt
       ..strokeWidth = baseStrokeWidth
       ..color = const Color(0xFFF1F3F7);
-    canvas.drawArc(rect, 0, math.pi * 2, false, backgroundPaint);
+    canvas.drawArc(baseRect, 0, math.pi * 2, false, backgroundPaint);
     var startAngle = -math.pi / 2;
+    final hasSingleFullSegment = values.length == 1;
     for (var i = 0; i < values.length; i++) {
       final normalizedSweep = (values[i] / total) * math.pi * 2;
-      final sweepAngle = normalizedSweep * progress;
+      final gap = hasSingleFullSegment ? 0.0 : math.min(0.028, normalizedSweep * 0.18);
+      final sweepAngle = math.max(0.0, (normalizedSweep - gap) * progress);
       final isSelected = i == selectedIndex;
+      final strokeWidth = isSelected
+          ? lerpDouble(baseStrokeWidth, selectedStrokeWidth, selectionProgress) ??
+              selectedStrokeWidth
+          : lerpDouble(baseStrokeWidth, 18, selectionProgress) ?? 18;
+      final segmentRadius = isSelected
+          ? baseInnerRadius +
+              (strokeWidth / 2) +
+              (selectedOuterExtension * selectionProgress)
+          : baseRadius;
+      final segmentRect = Rect.fromCircle(
+        center: Offset(size.width / 2, size.height / 2),
+        radius: segmentRadius,
+      );
       final paint = Paint()
         ..style = PaintingStyle.stroke
-        ..strokeCap = StrokeCap.round
-        ..strokeWidth = isSelected ? selectedStrokeWidth : baseStrokeWidth
-        ..color = isSelected ? colors[i] : colors[i].withValues(alpha: 0.24);
-      canvas.drawArc(rect, startAngle, sweepAngle, false, paint);
+        ..strokeCap = StrokeCap.butt
+        ..strokeWidth = strokeWidth
+        ..color = isSelected
+            ? Color.lerp(colors[i].withValues(alpha: 0.74), colors[i], selectionProgress) ??
+                colors[i]
+            : Color.lerp(
+                  colors[i].withValues(alpha: 0.56),
+                  colors[i].withValues(alpha: 0.36),
+                  selectionProgress,
+                ) ??
+                colors[i].withValues(alpha: 0.36);
+      canvas.drawArc(segmentRect, startAngle, sweepAngle, false, paint);
       startAngle += normalizedSweep;
     }
   }
@@ -760,27 +1124,42 @@ class _StatsDonutPainter extends CustomPainter {
     return oldDelegate.values != values ||
         oldDelegate.colors != colors ||
         oldDelegate.progress != progress ||
-        oldDelegate.selectedIndex != selectedIndex;
+        oldDelegate.selectedIndex != selectedIndex ||
+        oldDelegate.selectionProgress != selectionProgress;
   }
 }
 
-const List<Color> _statsPalette = [
+String _formatStatsWon(double value) {
+  return '₩${NumberFormat('#,###').format(value.round())}';
+}
+
+String _formatStatsRatio(double ratio) {
+  final percent = ratio * 100;
+  final rounded = percent.roundToDouble();
+  if ((percent - rounded).abs() < 0.05) {
+    return '${rounded.toInt()}%';
+  }
+  return '${percent.toStringAsFixed(1)}%';
+}
+
+const List<Color> _statsExpensePalette = [
   Color(0xFFFF6A5F),
-  Color(0xFFFFA26B),
-  Color(0xFFFFD166),
-  Color(0xFF7AD3A8),
-  Color(0xFF6EC5FF),
-  Color(0xFF9C8CFF),
+  Color(0xFFFFB099),
+  Color(0xFFFFC8BF),
+  Color(0xFFF3F4F7),
+  Color(0xFFE0E8FF),
+  Color(0xFFD5F0E4),
 ];
 
-String _categoryEmoji(String category) {
-  final lower = category.toLowerCase();
-  if (lower.contains('교') || lower.contains('차')) return '🚕';
-  if (lower.contains('식')) return '🍜';
-  if (lower.contains('쇼')) return '🛍️';
-  if (lower.contains('생')) return '🧴';
-  return '💳';
-}
+const List<Color> _statsIncomePalette = [
+  Color(0xFF6C9CFF),
+  Color(0xFF8BB5FF),
+  Color(0xFFB8D2FF),
+  Color(0xFFD8E6FF),
+  Color(0xFFEAF2FF),
+  Color(0xFFF3F7FF),
+];
+
 
 class _CompactPageHeader extends StatelessWidget {
   const _CompactPageHeader({
@@ -837,17 +1216,99 @@ class _CompactHeaderButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: SizedBox(
-        width: 42,
-        height: 42,
-        child: Icon(
-          icon,
-          size: 30,
-          color: onTap == null ? const Color(0xFFCDD4DE) : const Color(0xFF14171C),
+    return Material(
+      type: MaterialType.transparency,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: SizedBox(
+          width: 42,
+          height: 42,
+          child: Icon(
+            icon,
+            size: 30,
+            color: onTap == null ? const Color(0xFFCDD4DE) : const Color(0xFF14171C),
+          ),
         ),
+      ),
+    );
+  }
+}
+
+class _NotificationSourceAppIcon extends StatelessWidget {
+  const _NotificationSourceAppIcon({
+    required this.packageName,
+    required this.iconBase64,
+  });
+
+  final String packageName;
+  final String iconBase64;
+
+  @override
+  Widget build(BuildContext context) {
+    if (iconBase64.trim().isNotEmpty) {
+      try {
+        final bytes = base64Decode(iconBase64.trim());
+        if (bytes.isNotEmpty) {
+          return _buildIcon(bytes);
+        }
+      } catch (_) {}
+    }
+    final normalizedPackage = packageName.trim();
+    if (normalizedPackage.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final future = _walletKeeperAppIconFutureCache.putIfAbsent(
+      normalizedPackage,
+      () => const WalletKeeperNotificationAccessRepository()
+          .getApplicationIconBytes(normalizedPackage),
+    );
+    return FutureBuilder<Uint8List?>(
+      future: future,
+      builder: (context, snapshot) {
+        final bytes = snapshot.data;
+        if (bytes == null || bytes.isEmpty) {
+          return const SizedBox.shrink();
+        }
+        return _buildIcon(bytes);
+      },
+    );
+  }
+
+  Widget _buildIcon(Uint8List bytes) {
+    return Container(
+      width: 18,
+      height: 18,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Image.memory(
+        bytes,
+        fit: BoxFit.cover,
+        filterQuality: FilterQuality.medium,
+      ),
+    );
+  }
+}
+
+class _NotificationSourceSmsIcon extends StatelessWidget {
+  const _NotificationSourceSmsIcon();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 22,
+      height: 22,
+      decoration: BoxDecoration(
+        color: const Color(0xFFE9F2FF),
+        borderRadius: BorderRadius.circular(7),
+      ),
+      alignment: Alignment.center,
+      child: const Icon(
+        Icons.sms_outlined,
+        size: 14,
+        color: Color(0xFF4B8EFF),
       ),
     );
   }
@@ -864,7 +1325,7 @@ class SmsInboxPage extends StatefulWidget {
     required this.onImportRecent,
     required this.onOpenDraft,
     required this.onRequestSmsAccess,
-    required this.onPasteMessage,
+    required this.onQuickAutoInput,
     required this.onDeleteSelected,
   });
 
@@ -876,7 +1337,7 @@ class SmsInboxPage extends StatefulWidget {
   final Future<void> Function(int days) onImportRecent;
   final void Function(WalletKeeperSmsDraft draft) onOpenDraft;
   final Future<void> Function() onRequestSmsAccess;
-  final Future<void> Function() onPasteMessage;
+  final Future<void> Function(WalletKeeperSmsDraft draft) onQuickAutoInput;
   final Future<void> Function(Set<String> ids) onDeleteSelected;
 
   @override
@@ -887,6 +1348,10 @@ class _SmsInboxPageState extends State<SmsInboxPage> {
   bool _importing = false;
   bool _deleteMode = false;
   final Set<String> _selectedIds = <String>{};
+  final Set<String> _pendingRemovalIds = <String>{};
+
+  List<WalletKeeperSmsDraft> get _visibleDrafts =>
+      widget.drafts.where((draft) => !_pendingRemovalIds.contains(draft.id)).toList();
 
   void _handleBackPressed() {
     if (_deleteMode) {
@@ -897,6 +1362,43 @@ class _SmsInboxPageState extends State<SmsInboxPage> {
       return;
     }
     widget.onBack();
+  }
+
+  @override
+  void didUpdateWidget(covariant SmsInboxPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _pendingRemovalIds.removeWhere(
+      (id) => !widget.drafts.any((draft) => draft.id == id),
+    );
+    _selectedIds.removeWhere(
+      (id) => !widget.drafts.any((draft) => draft.id == id),
+    );
+  }
+
+  Future<void> _handleQuickAutoInput(WalletKeeperSmsDraft draft) async {
+    setState(() {
+      _pendingRemovalIds.add(draft.id);
+      _selectedIds.remove(draft.id);
+    });
+    try {
+      await widget.onQuickAutoInput(draft);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _pendingRemovalIds.remove(draft.id));
+    }
+  }
+
+  Future<void> _handleDismissDelete(WalletKeeperSmsDraft draft) async {
+    setState(() {
+      _pendingRemovalIds.add(draft.id);
+      _selectedIds.remove(draft.id);
+    });
+    try {
+      await widget.onDeleteSelected({draft.id});
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _pendingRemovalIds.remove(draft.id));
+    }
   }
 
   Future<void> _showImportDialog() async {
@@ -1014,7 +1516,8 @@ class _SmsInboxPageState extends State<SmsInboxPage> {
 
   @override
   Widget build(BuildContext context) {
-    final allSelected = widget.drafts.isNotEmpty && _selectedIds.length == widget.drafts.length;
+    final allSelected =
+        _visibleDrafts.isNotEmpty && _selectedIds.length == _visibleDrafts.length;
     return PopScope(
       canPop: !_deleteMode,
       onPopInvokedWithResult: (didPop, _) {
@@ -1029,12 +1532,12 @@ class _SmsInboxPageState extends State<SmsInboxPage> {
         child: Column(
           children: [
             _CompactPageHeader(
-              title: '문자함 (${widget.drafts.length})',
+              title: '문자함 (${_visibleDrafts.length})',
               onBack: _handleBackPressed,
               trailing: [
                 _CompactHeaderButton(
                   icon: _deleteMode ? Icons.close_rounded : Icons.delete_outline_rounded,
-                  onTap: widget.drafts.isEmpty
+                  onTap: _visibleDrafts.isEmpty
                       ? null
                       : () {
                           setState(() {
@@ -1058,10 +1561,10 @@ class _SmsInboxPageState extends State<SmsInboxPage> {
                   margin: const EdgeInsets.only(bottom: 10),
                   padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
                   color: Colors.white,
-                  child: const Text(
-                    '휴대폰에 수신된 금융 문자가 자동 저장됩니다.\n문자 가져오기로 휴대폰에 저장된 문자를 가져올 수 있습니다. 설정 > 문자설정 > 문자 자동 입력 기능 On 으로 설정하시면 문자함을 거치지 않고 바로 등록할 수 있습니다.',
-                    style: TextStyle(
-                      color: Color(0xFF59606B),
+                    child: const Text(
+                      'SMS, MMS, 금융앱 알림 중 금융 내역 관련 내용이 자동 감지되어 문자함에 담깁니다.\n문자 가져오기는 휴대폰에 저장된 최근 문자를 수동으로 불러옵니다. 왼쪽으로 밀면 삭제, 오른쪽으로 끝까지 밀면 바로 자동입력 저장됩니다.',
+                      style: TextStyle(
+                        color: Color(0xFF59606B),
                       fontSize: 13,
                       height: 1.45,
                       fontWeight: FontWeight.w500,
@@ -1077,7 +1580,7 @@ class _SmsInboxPageState extends State<SmsInboxPage> {
                         } else {
                           _selectedIds
                             ..clear()
-                            ..addAll(widget.drafts.map((draft) => draft.id));
+                            ..addAll(_visibleDrafts.map((draft) => draft.id));
                         }
                       });
                     },
@@ -1100,7 +1603,7 @@ class _SmsInboxPageState extends State<SmsInboxPage> {
                                   } else {
                                     _selectedIds
                                       ..clear()
-                                      ..addAll(widget.drafts.map((draft) => draft.id));
+                                      ..addAll(_visibleDrafts.map((draft) => draft.id));
                                   }
                                 });
                               },
@@ -1119,7 +1622,7 @@ class _SmsInboxPageState extends State<SmsInboxPage> {
                       ),
                     ),
                   ),
-                if (widget.drafts.isEmpty)
+                if (_visibleDrafts.isEmpty)
                   Container(
                     margin: const EdgeInsets.fromLTRB(20, 8, 20, 0),
                     padding: const EdgeInsets.fromLTRB(22, 28, 22, 28),
@@ -1139,140 +1642,240 @@ class _SmsInboxPageState extends State<SmsInboxPage> {
                     ),
                   )
                 else
-                  ...widget.drafts.map(
-                    (draft) => InkWell(
-                      onTap: () {
-                        if (_deleteMode) {
-                          setState(() {
-                            if (_selectedIds.contains(draft.id)) {
-                              _selectedIds.remove(draft.id);
-                            } else {
-                              _selectedIds.add(draft.id);
-                            }
-                          });
-                          return;
-                        }
-                        widget.onOpenDraft(draft);
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
-                        decoration: const BoxDecoration(
-                          color: Colors.white,
-                          border: Border(bottom: BorderSide(color: Color(0xFFEEF1F5))),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                if (_deleteMode)
-                                  Padding(
-                                    padding: const EdgeInsets.only(right: 12),
-                                    child: SizedBox(
-                                      width: 28,
-                                      height: 28,
-                                      child: Checkbox(
-                                        value: _selectedIds.contains(draft.id),
-                                        materialTapTargetSize:
-                                            MaterialTapTargetSize.shrinkWrap,
-                                        visualDensity: VisualDensity.compact,
-                                        onChanged: (_) {
-                                          setState(() {
-                                            if (_selectedIds.contains(draft.id)) {
-                                              _selectedIds.remove(draft.id);
-                                            } else {
-                                              _selectedIds.add(draft.id);
-                                            }
-                                          });
-                                        },
+                  ..._visibleDrafts.map(
+                    (draft) {
+                      final tile = InkWell(
+                        onTap: () {
+                          if (_deleteMode) {
+                            setState(() {
+                              if (_selectedIds.contains(draft.id)) {
+                                _selectedIds.remove(draft.id);
+                              } else {
+                                _selectedIds.add(draft.id);
+                              }
+                            });
+                            return;
+                          }
+                          widget.onOpenDraft(draft);
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+                          decoration: const BoxDecoration(
+                            color: Colors.white,
+                            border: Border(bottom: BorderSide(color: Color(0xFFEEF1F5))),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  if (_deleteMode)
+                                    Padding(
+                                      padding: const EdgeInsets.only(right: 12),
+                                      child: SizedBox(
+                                        width: 28,
+                                        height: 28,
+                                        child: Checkbox(
+                                          value: _selectedIds.contains(draft.id),
+                                          materialTapTargetSize:
+                                              MaterialTapTargetSize.shrinkWrap,
+                                          visualDensity: VisualDensity.compact,
+                                          onChanged: (_) {
+                                            setState(() {
+                                              if (_selectedIds.contains(draft.id)) {
+                                                _selectedIds.remove(draft.id);
+                                              } else {
+                                                _selectedIds.add(draft.id);
+                                              }
+                                            });
+                                          },
+                                        ),
+                                      ),
+                                    ),
+                                  Expanded(
+                                    child: Text(
+                                      DateFormat('MM.dd HH:mm:ss').format(draft.date),
+                                      style: const TextStyle(
+                                        color: Color(0xFF98A1AD),
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
                                       ),
                                     ),
                                   ),
-                                Expanded(
-                                  child: Text(
-                                    DateFormat('MM.dd HH:mm:ss').format(draft.date),
-                                    style: const TextStyle(
-                                      color: Color(0xFF98A1AD),
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
+                                  if (draft.sourceType == 'app_notification' &&
+                                      draft.sourceAddress.isNotEmpty)
+                                    _NotificationSourceAppIcon(
+                                      packageName: draft.sourceAddress,
+                                      iconBase64: draft.sourceAppIconBase64,
+                                    )
+                                  else if (draft.sourceType == 'sms' ||
+                                      draft.sourceType == 'mms')
+                                    const _NotificationSourceSmsIcon()
+                                  else
+                                    Text(
+                                      draft.sourceAddress.isEmpty ? '알 수 없음' : draft.sourceAddress,
+                                      style: const TextStyle(
+                                        color: Color(0xFF98A1AD),
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              const SizedBox(height: 10),
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          draft.title,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            color: Color(0xFF20242B),
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          draft.rawBody
+                                              .replaceFirst(
+                                                RegExp(
+                                                  r'^SMS 자동 감지\n발신:.*\n\n',
+                                                ),
+                                                '',
+                                              )
+                                              .replaceAll('\n', ' '),
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            color: Color(0xFF6F7782),
+                                            fontSize: 12,
+                                            height: 1.35,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
-                                ),
-                                Text(
-                                  draft.sourceAddress.isEmpty ? '알 수 없음' : draft.sourceAddress,
-                                  style: const TextStyle(
-                                    color: Color(0xFF98A1AD),
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 10),
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                  const SizedBox(width: 16),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
                                     children: [
                                       Text(
-                                        draft.title,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          color: Color(0xFF20242B),
-                                          fontSize: 14,
+                                        formatCurrency(draft.amount),
+                                        style: TextStyle(
+                                          color: draft.type == EntryType.expense
+                                              ? const Color(0xFFFF6A5F)
+                                              : draft.type == EntryType.income
+                                                  ? const Color(0xFF1FA463)
+                                                  : const Color(0xFF2F6BFF),
+                                          fontSize: 16,
                                           fontWeight: FontWeight.w800,
                                         ),
                                       ),
-                                      const SizedBox(height: 6),
-                                      Text(
-                                        draft.note.replaceFirst(
-                                          RegExp(r'^SMS 자동 감지\n발신:.*\n\n'),
-                                          '',
-                                        ),
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          color: Color(0xFF6F7782),
-                                          fontSize: 12,
-                                          height: 1.35,
-                                          fontWeight: FontWeight.w500,
-                                        ),
+                                      const SizedBox(height: 14),
+                                      const Icon(
+                                        Icons.chevron_right_rounded,
+                                        color: Color(0xFFB3BBC7),
                                       ),
                                     ],
                                   ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                      if (_deleteMode) {
+                        return tile;
+                      }
+                      return Dismissible(
+                        key: ValueKey('sms_draft_${draft.id}'),
+                        direction: DismissDirection.horizontal,
+                        background: Container(
+                          color: const Color(0xFF1FA463),
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          alignment: Alignment.centerLeft,
+                          child: Row(
+                            children: const [
+                              Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 22),
+                              SizedBox(width: 8),
+                              Text(
+                                '바로 저장',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w800,
                                 ),
-                                const SizedBox(width: 16),
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                  children: [
-                                    Text(
-                                      formatCurrency(draft.amount),
-                                      style: TextStyle(
-                                        color: draft.type == EntryType.expense
-                                            ? const Color(0xFFFF6A5F)
-                                            : draft.type == EntryType.income
-                                                ? const Color(0xFF1FA463)
-                                                : const Color(0xFF2F6BFF),
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 14),
-                                    const Icon(
-                                      Icons.chevron_right_rounded,
-                                      color: Color(0xFFB3BBC7),
-                                    ),
-                                  ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        secondaryBackground: Container(
+                          color: const Color(0xFFFF6A5F),
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          alignment: Alignment.centerRight,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: const [
+                              Text(
+                                '삭제',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              SizedBox(width: 8),
+                              Icon(Icons.delete_outline_rounded, color: Colors.white, size: 22),
+                            ],
+                          ),
+                        ),
+                        confirmDismiss: (direction) async {
+                          if (direction == DismissDirection.startToEnd) {
+                            return true;
+                          }
+                          final confirmed = await showDialog<bool>(
+                            context: context,
+                            builder: (context) => AlertDialog(
+                              backgroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(24),
+                              ),
+                              title: const Text('문자 삭제'),
+                              content: const Text('이 감지 문자를 문자함에서 삭제할까요?'),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.of(context).pop(false),
+                                  child: const Text('취소'),
+                                ),
+                                FilledButton(
+                                  onPressed: () => Navigator.of(context).pop(true),
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: const Color(0xFFFF6A5F),
+                                  ),
+                                  child: const Text('삭제'),
                                 ),
                               ],
                             ),
-                          ],
-                        ),
-                      ),
-                    ),
+                          );
+                          return confirmed == true;
+                        },
+                        onDismissed: (direction) {
+                          if (direction == DismissDirection.startToEnd) {
+                            _handleQuickAutoInput(draft);
+                          } else {
+                            _handleDismissDelete(draft);
+                          }
+                        },
+                        child: tile,
+                      );
+                    },
                   ),
                 ],
               ),
@@ -1467,7 +2070,7 @@ class _SettingsSwitchRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         color: highlighted ? const Color(0xFFFFF4F2) : const Color(0xFFFFFFFF),
         border: const Border(bottom: BorderSide(color: Color(0xFFE6EAF0))),
@@ -1501,20 +2104,17 @@ class _SettingsSwitchRow extends StatelessWidget {
             ),
           ),
           SizedBox(
-            width: 44,
-            height: 24,
-            child: FittedBox(
-              fit: BoxFit.fill,
-              child: Switch(
-                value: value,
-                onChanged: onChanged,
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                activeThumbColor: Colors.white,
-                activeTrackColor: const Color(0xFFFF6A5F),
-                inactiveTrackColor: const Color(0xFFE4E7EC),
-                inactiveThumbColor: Colors.white,
-                trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
-              ),
+            width: 50,
+            height: 30,
+            child: Switch(
+              value: value,
+              onChanged: onChanged,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              activeThumbColor: Colors.white,
+              activeTrackColor: const Color(0xFFFF6A5F),
+              inactiveTrackColor: const Color(0xFFE4E7EC),
+              inactiveThumbColor: Colors.white,
+              trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
             ),
           ),
         ],
@@ -1605,11 +2205,20 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
   late EntryType _type;
   DateTime _date = DateTime.now();
   bool _saving = false;
+  bool _categoryEditedByUser = false;
+  bool _applyingCategoryText = false;
 
   bool get hasUnsavedChanges {
     if (_saving) return false;
     final source = widget.existing;
     final draft = widget.smsDraft;
+    if (source == null && draft == null) {
+      return _titleController.text.trim().isNotEmpty ||
+          _amountController.text.trim().isNotEmpty ||
+          _categoryController.text.trim().isNotEmpty ||
+          _noteController.text.trim().isNotEmpty ||
+          _attachmentPaths.isNotEmpty;
+    }
     final sourceTitle = source?.title ?? draft?.title ?? '';
     final sourceAmount = _formatAmountForEditing(source?.amount ?? draft?.amount ?? 0);
     final sourceCategory = source?.category ?? draft?.category ?? '';
@@ -1658,19 +2267,38 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
           ? (cleanedNote.isEmpty ? '' : cleanedNote.split('\n').first)
           : normalizedTitle;
       _setAmountText(draft.amount.toStringAsFixed(0));
-      _categoryController.text = draft.category;
-      _noteController.text = cleanedNote;
+      _setCategoryText(draft.category);
+      _noteController.text = '';
       _type = draft.type;
       _date = draft.date;
       return;
     }
     _titleController.text = existing?.title ?? '';
     _setAmountText(existing?.amount.toStringAsFixed(0) ?? '');
-    _categoryController.text = existing?.category ?? '';
+    _setCategoryText(existing?.category ?? '', editedByUser: existing != null);
     _noteController.text = existing?.note ?? '';
     _attachmentPaths = List<String>.from(existing?.attachmentPaths ?? const []);
     _type = existing?.type ?? EntryType.expense;
     _date = existing?.date ?? DateTime.now();
+  }
+
+  void _setCategoryText(String value, {bool editedByUser = false}) {
+    _applyingCategoryText = true;
+    _categoryController.text = value;
+    _applyingCategoryText = false;
+    _categoryEditedByUser = editedByUser;
+  }
+
+  void _handleTypeChanged(EntryType type) {
+    if (_type == type) return;
+    final shouldAutoReplaceCategory =
+        widget.existing == null && !_categoryEditedByUser;
+    setState(() {
+      _type = type;
+      if (shouldAutoReplaceCategory) {
+        _setCategoryText(type.label(context));
+      }
+    });
   }
 
   @override
@@ -1858,7 +2486,10 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
 
   @override
   Widget build(BuildContext context) {
-    final bottomOverlayHeight = bottomOverlayHeightOf(context);
+    final bottomInset = bottomOverlayHeightOf(context);
+    final actionBarBottomInset = math.max(0.0, bottomInset - 38);
+    final applySystemBottomSafeArea = bottomInset == 0;
+    final actionBarBottomPadding = bottomInset > 0 ? 22.0 : 12.0;
     return Container(
       color: const Color(0xFFF7F8FA),
       child: Column(
@@ -1869,6 +2500,7 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
           ),
           Expanded(
             child: ListView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
               children: [
                 Row(
@@ -1879,7 +2511,7 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
                       child: Padding(
                         padding: EdgeInsets.only(right: isLast ? 0 : 10),
                         child: GestureDetector(
-                          onTap: () => setState(() => _type = type),
+                          onTap: () => _handleTypeChanged(type),
                         child: Container(
                             height: 42,
                             decoration: BoxDecoration(
@@ -1960,6 +2592,10 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
                   label: '분류',
                   child: TextField(
                     controller: _categoryController,
+                    onChanged: (_) {
+                      if (_applyingCategoryText) return;
+                      _categoryEditedByUser = true;
+                    },
                     style: const TextStyle(
                       color: Color(0xFF20242B),
                       fontSize: 14,
@@ -2020,17 +2656,20 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
                             ),
                           ),
                           const Spacer(),
-                          IconButton(
-                            onPressed: _openPhotoPicker,
-                            constraints: const BoxConstraints.tightFor(
-                              width: 28,
-                              height: 28,
-                            ),
-                            padding: EdgeInsets.zero,
-                            icon: const Icon(
-                              Icons.camera_alt_outlined,
-                              color: Color(0xFF8C95A2),
-                              size: 18,
+                          Material(
+                            type: MaterialType.transparency,
+                            child: IconButton(
+                              onPressed: _openPhotoPicker,
+                              constraints: const BoxConstraints.tightFor(
+                                width: 28,
+                                height: 28,
+                              ),
+                              padding: EdgeInsets.zero,
+                              icon: const Icon(
+                                Icons.camera_alt_outlined,
+                                color: Color(0xFF8C95A2),
+                                size: 18,
+                              ),
                             ),
                           ),
                         ],
@@ -2126,27 +2765,25 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
                     ],
                   ),
                 ),
-                if (_fromSmsDraft) ...[
-                  const SizedBox(height: 14),
-                  Center(
-                    child: Text(
-                      '문자분석 개선이 필요하신가요?',
-                      style: TextStyle(
-                        color: const Color(0xFF9CA3AF).withValues(alpha: 0.95),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ],
               ],
             ),
           ),
-          SafeArea(
-            top: false,
-            child: Container(
-              color: Colors.white,
-              padding: EdgeInsets.fromLTRB(16, 10, 16, 14 + bottomOverlayHeight),
+          Container(
+            decoration: const BoxDecoration(
+              color: Color(0xFFF7F8FA),
+              border: Border(
+                top: BorderSide(color: Color(0xFFE7EBF1)),
+              ),
+            ),
+            padding: EdgeInsets.fromLTRB(
+              16,
+              10,
+              16,
+              actionBarBottomPadding + actionBarBottomInset,
+            ),
+            child: SafeArea(
+              top: false,
+              bottom: applySystemBottomSafeArea,
               child: Row(
                 children: _fromSmsDraft
                     ? [
@@ -2170,25 +2807,6 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
                         ),
                         const SizedBox(width: 12),
                         Expanded(
-                          child: OutlinedButton.icon(
-                onPressed: () => widget.onCancel(),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: const Color(0xFF343A44),
-                              side: const BorderSide(color: Color(0xFFD4DAE3)),
-                              minimumSize: const Size.fromHeight(44),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                            ),
-                            icon: const Icon(
-                              Icons.arrow_forward_rounded,
-                              size: 18,
-                            ),
-                            label: const Text('건너뛰기'),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
                           child: FilledButton(
                             onPressed: _saving ? null : _save,
                             style: FilledButton.styleFrom(
@@ -2198,7 +2816,7 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
                                 borderRadius: BorderRadius.circular(14),
                               ),
                             ),
-                            child: Text(_saving ? '저장 중' : '저장 (1/1)'),
+                            child: Text(_saving ? '기록 중' : '기록하기'),
                           ),
                         ),
                       ]
@@ -2323,7 +2941,7 @@ class _RootTabHeader extends StatelessWidget {
           height: 44,
           child: Row(
             children: [
-              const SizedBox(width: 2),
+              const SizedBox(width: 34),
               Text(
                 title,
                 style: const TextStyle(
@@ -2571,25 +3189,44 @@ class AssetPage extends StatelessWidget {
     super.key,
     required this.entries,
     required this.session,
+    required this.onOpenFlowHistory,
   });
 
   final List<LedgerEntry> entries;
   final WalletKeeperUserSession? session;
+  final VoidCallback onOpenFlowHistory;
 
   @override
   Widget build(BuildContext context) {
     final bottomInset = bottomOverlayHeightOf(context);
+    final now = DateTime.now();
+    final startOfToday = DateTime(now.year, now.month, now.day);
     final summary = LedgerSummary.fromEntries(entries);
     final thisMonthEntries = entries
         .where(
           (entry) =>
-              entry.date.year == DateTime.now().year &&
-              entry.date.month == DateTime.now().month,
+              entry.date.year == now.year && entry.date.month == now.month,
         )
         .toList()
       ..sort((a, b) => b.date.compareTo(a.date));
-    final topCategories = summary.topCategories.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
+    final visibleUpcomingExpenses = _buildUpcomingFixedExpenses(
+      entries,
+      now: now,
+      startOfToday: startOfToday,
+    ).take(3).toList();
+    final recentFlow = thisMonthEntries.take(3).toList();
+    final incomeRatio = (summary.monthIncome <= 0 && summary.monthExpense <= 0)
+        ? 0.5
+        : summary.monthIncome /
+            math.max(1, summary.monthIncome + summary.monthExpense);
+    final expenseRatio =
+        (summary.monthIncome <= 0 && summary.monthExpense <= 0)
+            ? 0.0
+            : summary.monthExpense /
+                math.max(1, summary.monthIncome + summary.monthExpense);
+    final balanceRatio = (summary.monthIncome <= 0)
+        ? 0.0
+        : (summary.balance / math.max(1, summary.monthIncome)).clamp(0.0, 1.0);
 
     return Container(
       color: const Color(0xFFF7F8FA),
@@ -2600,134 +3237,374 @@ class AssetPage extends StatelessWidget {
             child: ListView(
               padding: EdgeInsets.fromLTRB(16, 10, 16, bottomInset + 24),
               children: [
-                Container(
-            padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: const Color(0xFFE6EAF0)),
-            ),
-            child: Row(
-              children: [
-                CircleAvatar(
-                  radius: 28,
-                  backgroundColor: const Color(0xFFFFECE9),
-                  backgroundImage: session?.profileImage.isNotEmpty == true
-                      ? NetworkImage(session!.profileImage)
-                      : null,
-                  child: session?.profileImage.isNotEmpty == true
-                      ? null
-                      : const Icon(
-                          Icons.account_balance_wallet_rounded,
-                          size: 26,
-                          color: Color(0xFFFF6A5F),
-                        ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
+                _AssetSoftCard(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        session == null || session!.isGuest
-                            ? '비회원 자산 요약'
-                            : '${session!.providerLabel} 연동 자산 요약',
-                        style: const TextStyle(
-                          color: Color(0xFF14171C),
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                        ),
+                      Row(
+                        children: const [
+                          Text(
+                            '다가오는 지출',
+                            style: TextStyle(
+                              color: Color(0xFF14171C),
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          Spacer(),
+                          Text(
+                            '전체보기',
+                            style: TextStyle(
+                              color: Color(0xFF97A1AF),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          SizedBox(width: 2),
+                          Icon(
+                            Icons.chevron_right_rounded,
+                            size: 18,
+                            color: Color(0xFF97A1AF),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        session?.email.isNotEmpty == true
-                            ? session!.email
-                            : '현재는 가계부 내역 기준으로 자금 흐름을 보여줍니다.',
-                        style: const TextStyle(
-                          color: Color(0xFF727B86),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
+                      const SizedBox(height: 14),
+                      if (visibleUpcomingExpenses.isEmpty)
+                        const _AssetSimpleEmpty(
+                          title: '예정된 지출이 없습니다.',
+                          subtitle: '다가오는 지출이 생기면 이곳에 먼저 표시됩니다.',
+                        )
+                      else
+                        ...List.generate(visibleUpcomingExpenses.length, (index) {
+                          final entry = visibleUpcomingExpenses[index];
+                          return Padding(
+                            padding: EdgeInsets.only(
+                              bottom: index == visibleUpcomingExpenses.length - 1
+                                  ? 0
+                                  : 16,
+                            ),
+                            child: _UpcomingExpenseRow(entry: entry),
+                          );
+                        }),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+                _AssetSoftCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Text(
+                            '자금 흐름',
+                            style: TextStyle(
+                              color: Color(0xFF14171C),
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            summary.balance >= 0 ? '이번 달 양호' : '이번 달 점검',
+                            style: TextStyle(
+                              color: summary.balance >= 0
+                                  ? const Color(0xFF29B15F)
+                                  : const Color(0xFFFF6A5F),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
                       ),
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          const Text(
+                            '수입 대비 비율',
+                            style: TextStyle(
+                              color: Color(0xFF9BA3AF),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            '${(incomeRatio * 100).round()}%',
+                            style: const TextStyle(
+                              color: Color(0xFF29B15F),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      _AssetProgressBar(
+                        ratio: incomeRatio,
+                        color: const Color(0xFF29B15F),
+                      ),
+                      const SizedBox(height: 14),
+                      _AssetFlowMetricRow(
+                        label: '수입',
+                        color: const Color(0xFF68A9FF),
+                        amount: '+${_formatAssetAmount(summary.monthIncome)}',
+                        amountColor: const Color(0xFF68A9FF),
+                        ratio: incomeRatio.clamp(0.0, 1.0),
+                      ),
+                      const SizedBox(height: 10),
+                      _AssetFlowMetricRow(
+                        label: '지출',
+                        color: const Color(0xFFFF6A5F),
+                        amount: '-${_formatAssetAmount(summary.monthExpense)}',
+                        amountColor: const Color(0xFFFF6A5F),
+                        ratio: expenseRatio.clamp(0.0, 1.0),
+                      ),
+                      const SizedBox(height: 10),
+                      _AssetFlowMetricRow(
+                        label: '남은금액',
+                        color: const Color(0xFF29B15F),
+                        amount: '${summary.balance >= 0 ? '+' : '-'}${_formatAssetAmount(summary.balance.abs())}',
+                        amountColor: summary.balance >= 0
+                            ? const Color(0xFF29B15F)
+                            : const Color(0xFFFF6A5F),
+                        ratio: balanceRatio,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+                _AssetSoftCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Text(
+                            '최근 자금 흐름',
+                            style: TextStyle(
+                              color: Color(0xFF14171C),
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const Spacer(),
+                          GestureDetector(
+                            onTap: onOpenFlowHistory,
+                            behavior: HitTestBehavior.opaque,
+                            child: const Row(
+                              children: [
+                                Text(
+                            '전체보기',
+                            style: TextStyle(
+                              color: Color(0xFF97A1AF),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                                SizedBox(width: 2),
+                                Icon(
+                            Icons.chevron_right_rounded,
+                            size: 18,
+                            color: Color(0xFF97A1AF),
+                          ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      if (recentFlow.isEmpty)
+                        const _AssetSimpleEmpty(
+                          title: '최근 자금 흐름이 없습니다.',
+                          subtitle: '내역이 쌓이면 최근 변화가 이곳에 정리됩니다.',
+                        )
+                      else
+                        ...List.generate(recentFlow.length, (index) {
+                          return Column(
+                            children: [
+                              _RecentAssetFlowRow(entry: recentFlow[index]),
+                              if (index != recentFlow.length - 1)
+                                const Divider(
+                                  height: 20,
+                                  thickness: 1,
+                                  color: Color(0xFFE9EDF3),
+                                ),
+                            ],
+                          );
+                        }),
                     ],
                   ),
                 ),
               ],
             ),
           ),
-                const SizedBox(height: 14),
-                Row(
-            children: [
-              Expanded(
-                child: _AssetMetricCard(
-                  label: '이번 달 수입',
-                  value: formatCurrency(summary.monthIncome),
-                  valueColor: const Color(0xFF2F6BFF),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _AssetMetricCard(
-                  label: '이번 달 지출',
-                  value: formatCurrency(summary.monthExpense),
-                  valueColor: const Color(0xFFFF6A5F),
-                ),
-              ),
-            ],
-          ),
-                const SizedBox(height: 10),
-                Row(
-            children: [
-              Expanded(
-                child: _AssetMetricCard(
-                  label: '순흐름',
-                  value: formatCurrency(summary.balance),
-                  valueColor: summary.balance >= 0
-                      ? const Color(0xFF16A34A)
-                      : const Color(0xFFD92D20),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _AssetMetricCard(
-                  label: '이체 / 고정비',
-                  value:
-                      '${formatCurrency(summary.transferAmount)} / ${formatCurrency(summary.fixedExpense)}',
-                  valueColor: const Color(0xFF14171C),
-                ),
-              ),
-            ],
-          ),
-                const SizedBox(height: 18),
-                _SettingsMenuSection(
-            title: '상위 지출 카테고리',
-            children: topCategories.isEmpty
-                ? [
-                    const _AssetEmptyTile(
-                      title: '아직 지출 데이터가 없습니다.',
-                      subtitle: '기록이 쌓이면 자산 흐름과 지출 비중을 여기서 확인할 수 있습니다.',
-                    ),
-                  ]
-                : topCategories.take(5).map((entry) {
-                    return _AssetCategoryTile(
-                      title: entry.key,
-                      amount: formatCurrency(entry.value),
-                    );
-                  }).toList(),
-          ),
-                const SizedBox(height: 18),
-                _SettingsMenuSection(
+        ],
+      ),
+    );
+  }
+}
+
+List<LedgerEntry> _buildUpcomingFixedExpenses(
+  List<LedgerEntry> entries, {
+  required DateTime now,
+  required DateTime startOfToday,
+}) {
+  final futureFixed = entries
+      .where(
+        (entry) =>
+            entry.type == EntryType.expense &&
+            !entry.date.isBefore(startOfToday) &&
+            _looksLikeFixedExpense(entry),
+      )
+      .toList()
+    ..sort((a, b) => a.date.compareTo(b.date));
+
+  final groups = <String, List<LedgerEntry>>{};
+  for (final entry in entries.where((item) => item.type == EntryType.expense)) {
+    groups.putIfAbsent(_fixedExpenseSignature(entry), () => <LedgerEntry>[]).add(entry);
+  }
+
+  final projected = <LedgerEntry>[];
+  for (final group in groups.values) {
+    group.sort((a, b) => b.date.compareTo(a.date));
+    final sample = group.first;
+    final explicitFixed = _looksLikeFixedExpense(sample);
+    final hasMonthlyPattern = _hasMonthlyRecurringPattern(group);
+    if (!explicitFixed && !hasMonthlyPattern) continue;
+
+    final dueDay = group.first.date.day;
+    final lastDayOfMonth = DateTime(now.year, now.month + 1, 0).day;
+    final projectedDate = DateTime(
+      now.year,
+      now.month,
+      math.min(dueDay, lastDayOfMonth),
+      group.first.date.hour,
+      group.first.date.minute,
+    );
+    if (projectedDate.isBefore(startOfToday)) continue;
+
+    final alreadyOccurredThisMonth = group.any(
+      (entry) =>
+          entry.date.year == now.year &&
+          entry.date.month == now.month &&
+          entry.date.day == projectedDate.day,
+    );
+    if (alreadyOccurredThisMonth) continue;
+
+    final sameFutureAlreadyExists = futureFixed.any(
+      (entry) => _fixedExpenseSignature(entry) == _fixedExpenseSignature(sample),
+    );
+    if (sameFutureAlreadyExists) continue;
+
+    projected.add(
+      LedgerEntry(
+        id: 'projected:${sample.id}:$projectedDate',
+        title: sample.title,
+        amount: sample.amount,
+        category: sample.category,
+        note: sample.note,
+        attachmentPaths: const [],
+        type: sample.type,
+        date: projectedDate,
+        createdAt: sample.createdAt,
+      ),
+    );
+  }
+
+  final merged = [...futureFixed, ...projected];
+  merged.sort((a, b) => a.date.compareTo(b.date));
+  final seen = <String>{};
+  return merged.where((entry) {
+    final key = '${_fixedExpenseSignature(entry)}|${entry.date.year}-${entry.date.month}-${entry.date.day}';
+    if (!seen.add(key)) return false;
+    return true;
+  }).toList();
+}
+
+String _fixedExpenseSignature(LedgerEntry entry) =>
+    '${entry.title.trim().toLowerCase()}|${entry.category.trim().toLowerCase()}';
+
+bool _hasMonthlyRecurringPattern(List<LedgerEntry> group) {
+  if (group.length < 2) return false;
+  final sorted = List<LedgerEntry>.from(group)..sort((a, b) => b.date.compareTo(a.date));
+  for (var index = 0; index < sorted.length - 1; index++) {
+    final diff = sorted[index].date.difference(sorted[index + 1].date).inDays.abs();
+    if (diff >= 25 && diff <= 35) return true;
+  }
+  return false;
+}
+
+bool _looksLikeFixedExpense(LedgerEntry entry) {
+  final combined = '${entry.title} ${entry.category} ${entry.note}'.toLowerCase();
+  const fixedKeywords = [
+    '고정',
+    '자동이체',
+    '카드대금',
+    '통신',
+    '보험',
+    '관리비',
+    '월세',
+    '구독',
+    '정기',
+    '납부',
+    '공과금',
+    '대출',
+    '할부',
+    '렌탈',
+    '학원',
+  ];
+  return fixedKeywords.any(combined.contains);
+}
+
+class AssetFlowHistoryPage extends StatelessWidget {
+  const AssetFlowHistoryPage({
+    super.key,
+    required this.entries,
+    required this.onBack,
+  });
+
+  final List<LedgerEntry> entries;
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context) {
+    final recentFlow = List<LedgerEntry>.from(entries)
+      ..sort((a, b) => b.date.compareTo(a.date));
+
+    return Container(
+      color: const Color(0xFFF7F8FA),
+      child: Column(
+        children: [
+          _CompactPageHeader(
             title: '최근 자금 흐름',
-            children: thisMonthEntries.isEmpty
-                ? [
-                    const _AssetEmptyTile(
-                      title: '이번 달 기록이 없습니다.',
-                      subtitle: '내역을 추가하면 최근 흐름을 자산 탭에서도 바로 볼 수 있습니다.',
-                    ),
-                  ]
-                : thisMonthEntries.take(5).map((entry) {
-                    return _AssetLedgerTile(entry: entry);
-                  }).toList(),
+            onBack: onBack,
+          ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
+              children: [
+                _AssetSoftCard(
+                  child: recentFlow.isEmpty
+                      ? const _AssetSimpleEmpty(
+                          title: '최근 자금 흐름이 없습니다.',
+                          subtitle: '내역이 쌓이면 최근 변화가 이곳에 정리됩니다.',
+                        )
+                      : Column(
+                          children: List.generate(recentFlow.length, (index) {
+                            return Column(
+                              children: [
+                                _RecentAssetFlowRow(entry: recentFlow[index]),
+                                if (index != recentFlow.length - 1)
+                                  const Divider(
+                                    height: 20,
+                                    thickness: 1,
+                                    color: Color(0xFFE9EDF3),
+                                  ),
+                              ],
+                            );
+                          }),
+                        ),
                 ),
               ],
             ),
@@ -2841,6 +3718,14 @@ class _MemoEditorPageState extends State<MemoEditorPage> {
   late final TextEditingController _contentController;
   bool _saving = false;
 
+  bool get hasUnsavedChanges {
+    if (_saving) return false;
+    final sourceTitle = widget.existing?.title ?? '';
+    final sourceContent = widget.existing?.content ?? '';
+    return _titleController.text.trim() != sourceTitle.trim() ||
+        _contentController.text.trim() != sourceContent.trim();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -2853,6 +3738,60 @@ class _MemoEditorPageState extends State<MemoEditorPage> {
     _titleController.dispose();
     _contentController.dispose();
     super.dispose();
+  }
+
+  Future<bool> confirmDiscardIfNeeded() async {
+    if (!hasUnsavedChanges) return true;
+    final shouldLeave = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: const Text(
+          '작성 중인 내용이 있습니다',
+          style: TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.w800,
+            color: Color(0xFF111827),
+          ),
+        ),
+        content: const Text(
+          '정말로 나가시겠습니까?',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF374151),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text(
+              '취소',
+              style: TextStyle(
+                color: Color(0xFF6B7280),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFE76158),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+            child: const Text(
+              '나가기',
+              style: TextStyle(fontWeight: FontWeight.w800),
+            ),
+          ),
+        ],
+      ),
+    );
+    return shouldLeave == true;
   }
 
   Future<void> _save() async {
@@ -2980,6 +3919,289 @@ class _MemoEditorPageState extends State<MemoEditorPage> {
         ],
       ),
     );
+  }
+}
+
+class BudgetSettingsSheet extends StatefulWidget {
+  const BudgetSettingsSheet({
+    super.key,
+    required this.month,
+    required this.initialBudgets,
+    required this.categorySuggestions,
+    required this.onSave,
+  });
+
+  final DateTime month;
+  final List<WalletKeeperBudgetSetting> initialBudgets;
+  final List<String> categorySuggestions;
+  final Future<void> Function(List<WalletKeeperBudgetSetting> budgets) onSave;
+
+  @override
+  State<BudgetSettingsSheet> createState() => _BudgetSettingsSheetState();
+}
+
+class _BudgetSettingsSheetState extends State<BudgetSettingsSheet> {
+  final List<_BudgetDraftRow> _rows = [];
+  bool _saving = false;
+  int? _activeRowIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialBudgets.isEmpty) {
+      _rows.add(_BudgetDraftRow.empty());
+    } else {
+      _rows.addAll(
+        widget.initialBudgets.map(
+          (budget) => _BudgetDraftRow.fromBudget(budget),
+        ),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final row in _rows) {
+      row.dispose();
+    }
+    super.dispose();
+  }
+
+  void _addRow() {
+    setState(() {
+      _rows.add(_BudgetDraftRow.empty());
+      _activeRowIndex = _rows.length - 1;
+    });
+  }
+
+  void _removeRow(int index) {
+    final row = _rows.removeAt(index);
+    row.dispose();
+    if (_rows.isEmpty) {
+      _rows.add(_BudgetDraftRow.empty());
+    }
+    setState(() {
+      if (_activeRowIndex != null && _activeRowIndex! >= _rows.length) {
+        _activeRowIndex = _rows.length - 1;
+      }
+    });
+  }
+
+  void _applySuggestion(String suggestion) {
+    if (_rows.isEmpty) return;
+    final targetIndex = _activeRowIndex ?? (_rows.length - 1);
+    _rows[targetIndex].categoryController.text = suggestion;
+    setState(() {
+      _activeRowIndex = targetIndex;
+    });
+  }
+
+  Future<void> _save() async {
+    final monthKey = DateFormat('yyyy-MM').format(widget.month);
+    final now = DateTime.now();
+    final budgets = _rows
+        .map((row) {
+          final category = row.categoryController.text.trim();
+          final digits = row.amountController.text.replaceAll(',', '').trim();
+          final amount = double.tryParse(digits) ?? 0;
+          if (category.isEmpty || amount <= 0) return null;
+          return WalletKeeperBudgetSetting(
+            id: row.id,
+            category: category,
+            amount: amount,
+            monthKey: monthKey,
+            createdAt: row.createdAt,
+            updatedAt: now,
+          );
+        })
+        .whereType<WalletKeeperBudgetSetting>()
+        .toList();
+    setState(() => _saving = true);
+    await widget.onSave(budgets);
+    if (!mounted) return;
+    setState(() => _saving = false);
+    Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: const Color(0xFFF7F8FA),
+      child: Column(
+        children: [
+          _CompactPageHeader(
+            title: '${DateFormat('M월', 'ko_KR').format(widget.month)} 예산설정',
+            onBack: () => Navigator.of(context).pop(),
+          ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+              children: [
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: widget.categorySuggestions.map((category) {
+                    return ActionChip(
+                      label: Text(
+                        category,
+                        style: const TextStyle(
+                          color: Color(0xFF374151),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      backgroundColor: Colors.white,
+                      side: const BorderSide(color: Color(0xFFE5EAF1)),
+                      onPressed: () => _applySuggestion(category),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 14),
+                ..._rows.asMap().entries.map((entry) {
+                  final index = entry.key;
+                  final row = entry.value;
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: const Color(0xFFE5EAF1)),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          flex: 5,
+                          child: TextField(
+                            controller: row.categoryController,
+                            onTap: () => setState(() => _activeRowIndex = index),
+                            style: const TextStyle(
+                              color: Color(0xFF20242B),
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                            ),
+                            decoration: const InputDecoration(
+                              border: InputBorder.none,
+                              isDense: true,
+                              hintText: '분류 입력',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          flex: 4,
+                          child: TextField(
+                            controller: row.amountController,
+                            onTap: () => setState(() => _activeRowIndex = index),
+                            keyboardType: TextInputType.number,
+                            inputFormatters: const [_ThousandsSeparatorInputFormatter()],
+                            textAlign: TextAlign.right,
+                            style: const TextStyle(
+                              color: Color(0xFF20242B),
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                            ),
+                            decoration: const InputDecoration(
+                              border: InputBorder.none,
+                              isDense: true,
+                              hintText: '예산',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        IconButton(
+                          onPressed: _rows.length == 1 ? null : () => _removeRow(index),
+                          icon: const Icon(
+                            Icons.delete_outline_rounded,
+                            size: 20,
+                            color: Color(0xFF9AA3B2),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+                OutlinedButton.icon(
+                  onPressed: _addRow,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFFE76158),
+                    side: const BorderSide(color: Color(0xFFFFD2CD)),
+                    minimumSize: const Size.fromHeight(44),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  icon: const Icon(Icons.add_rounded, size: 18),
+                  label: const Text(
+                    '분류별 예산 추가',
+                    style: TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SafeArea(
+            top: false,
+            child: Container(
+              color: Colors.white,
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+              child: FilledButton(
+                onPressed: _saving ? null : _save,
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFFFF6A5F),
+                  minimumSize: const Size.fromHeight(48),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+                child: Text(_saving ? '저장 중' : '저장'),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BudgetDraftRow {
+  _BudgetDraftRow({
+    required this.id,
+    required this.createdAt,
+    required this.categoryController,
+    required this.amountController,
+  });
+
+  factory _BudgetDraftRow.empty() {
+    return _BudgetDraftRow(
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      createdAt: DateTime.now(),
+      categoryController: TextEditingController(),
+      amountController: TextEditingController(),
+    );
+  }
+
+  factory _BudgetDraftRow.fromBudget(WalletKeeperBudgetSetting budget) {
+    return _BudgetDraftRow(
+      id: budget.id,
+      createdAt: budget.createdAt,
+      categoryController: TextEditingController(text: budget.category),
+      amountController: TextEditingController(
+        text: _ThousandsSeparatorInputFormatter.formatDigits(
+          budget.amount.round().toString(),
+        ),
+      ),
+    );
+  }
+
+  final String id;
+  final DateTime createdAt;
+  final TextEditingController categoryController;
+  final TextEditingController amountController;
+
+  void dispose() {
+    categoryController.dispose();
+    amountController.dispose();
   }
 }
 
@@ -3179,152 +4401,8 @@ class _SettingsMenuTile extends StatelessWidget {
   }
 }
 
-class _AssetMetricCard extends StatelessWidget {
-  const _AssetMetricCard({
-    required this.label,
-    required this.value,
-    required this.valueColor,
-  });
-
-  final String label;
-  final String value;
-  final Color valueColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 15),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE6EAF0)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(
-              color: Color(0xFF7B8491),
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            value,
-            style: TextStyle(
-              color: valueColor,
-              fontSize: 15,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _AssetCategoryTile extends StatelessWidget {
-  const _AssetCategoryTile({
-    required this.title,
-    required this.amount,
-  });
-
-  final String title;
-  final String amount;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: Color(0xFFE6EAF0))),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              title,
-              style: const TextStyle(
-                color: Color(0xFF14171C),
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-          Text(
-            amount,
-            style: const TextStyle(
-              color: Color(0xFFFF6A5F),
-              fontSize: 13,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _AssetLedgerTile extends StatelessWidget {
-  const _AssetLedgerTile({
-    required this.entry,
-  });
-
-  final LedgerEntry entry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: Color(0xFFE6EAF0))),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  entry.title,
-                  style: const TextStyle(
-                    color: Color(0xFF14171C),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '${DateFormat('M.d HH:mm').format(entry.date)} · ${entry.category}',
-                  style: const TextStyle(
-                    color: Color(0xFF7B8491),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Text(
-            formatCurrency(entry.amount),
-            style: TextStyle(
-              color: entry.type == EntryType.income
-                  ? const Color(0xFF2F6BFF)
-                  : const Color(0xFFFF6A5F),
-              fontSize: 13,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _AssetEmptyTile extends StatelessWidget {
-  const _AssetEmptyTile({
+class _AssetSimpleEmpty extends StatelessWidget {
+  const _AssetSimpleEmpty({
     required this.title,
     required this.subtitle,
   });
@@ -3335,7 +4413,7 @@ class _AssetEmptyTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      padding: const EdgeInsets.fromLTRB(2, 4, 2, 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -3344,7 +4422,7 @@ class _AssetEmptyTile extends StatelessWidget {
             style: const TextStyle(
               color: Color(0xFF14171C),
               fontSize: 13,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w800,
             ),
           ),
           const SizedBox(height: 4),
@@ -3354,13 +4432,291 @@ class _AssetEmptyTile extends StatelessWidget {
               color: Color(0xFF7B8491),
               fontSize: 11,
               height: 1.45,
-              fontWeight: FontWeight.w600,
+              fontWeight: FontWeight.w700,
             ),
           ),
         ],
       ),
     );
   }
+}
+
+class _AssetSoftCard extends StatelessWidget {
+  const _AssetSoftCard({
+    required this.child,
+  });
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: const Color(0xFFE8ECF2)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x100A2540),
+            blurRadius: 24,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
+      child: child,
+    );
+  }
+}
+
+class _UpcomingExpenseRow extends StatelessWidget {
+  const _UpcomingExpenseRow({
+    required this.entry,
+  });
+
+  final LedgerEntry entry;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = _assetAccentForCategory(entry.category, entry.type);
+    return Row(
+      children: [
+        Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: accent.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Icon(
+            _assetIconForCategory(entry.category),
+            size: 19,
+            color: accent,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                entry.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Color(0xFF14171C),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                '${DateFormat('M.d').format(entry.date)} · ${entry.category}',
+                style: const TextStyle(
+                  color: Color(0xFF8D97A5),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 10),
+          Text(
+            _formatAssetAmount(entry.amount),
+          style: TextStyle(
+            color: entry.type == EntryType.expense
+                ? const Color(0xFFFF6A5F)
+                : const Color(0xFF2F6BFF),
+            fontSize: 14,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _AssetFlowMetricRow extends StatelessWidget {
+  const _AssetFlowMetricRow({
+    required this.label,
+    required this.color,
+    required this.amount,
+    required this.amountColor,
+    required this.ratio,
+  });
+
+  final String label;
+  final Color color;
+  final String amount;
+  final Color amountColor;
+  final double ratio;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                label,
+                style: const TextStyle(
+                  color: Color(0xFF7D8896),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            Text(
+              amount,
+              style: TextStyle(
+                color: amountColor,
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        _AssetProgressBar(ratio: ratio, color: color),
+      ],
+    );
+  }
+}
+
+class _AssetProgressBar extends StatelessWidget {
+  const _AssetProgressBar({
+    required this.ratio,
+    required this.color,
+  });
+
+  final double ratio;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(999),
+        child: SizedBox(
+          height: 16,
+          child: Stack(
+          children: [
+            Container(color: const Color(0xFFE9EDF3)),
+            FractionallySizedBox(
+              widthFactor: ratio.clamp(0.0, 1.0),
+              child: Container(color: color),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RecentAssetFlowRow extends StatelessWidget {
+  const _RecentAssetFlowRow({
+    required this.entry,
+  });
+
+  final LedgerEntry entry;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = _assetAccentForCategory(entry.category, entry.type);
+    final prefix = entry.type == EntryType.expense ? '-' : '+';
+    return Row(
+      children: [
+        Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: accent.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Icon(
+            _assetIconForCategory(entry.category),
+            size: 19,
+            color: accent,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                entry.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Color(0xFF14171C),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                '${DateFormat('M.d HH:mm').format(entry.date)} · ${entry.category}',
+                style: const TextStyle(
+                  color: Color(0xFF8D97A5),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 10),
+          Text(
+            '$prefix${_formatAssetAmount(entry.amount)}',
+            style: TextStyle(
+              color: entry.type == EntryType.expense
+                  ? const Color(0xFFFF6A5F)
+                : const Color(0xFF2F6BFF),
+            fontSize: 14,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+String _formatAssetAmount(double amount) {
+  return '${formatCurrency(amount).replaceAll('₩', '').trim()}원';
+}
+
+Color _assetAccentForCategory(String category, EntryType type) {
+  final normalized = category.toLowerCase();
+  if (normalized.contains('카드')) return const Color(0xFFFF6A5F);
+  if (normalized.contains('고정') || normalized.contains('자동')) {
+    return const Color(0xFFFFA15E);
+  }
+  if (normalized.contains('문자')) return const Color(0xFF68A9FF);
+  if (normalized.contains('교통')) return const Color(0xFFFFC04D);
+  return type == EntryType.income
+      ? const Color(0xFF68A9FF)
+      : const Color(0xFF29B15F);
+}
+
+IconData _assetIconForCategory(String category) {
+  final normalized = category.toLowerCase();
+  if (normalized.contains('카드')) return Icons.credit_card_rounded;
+  if (normalized.contains('고정') || normalized.contains('자동')) {
+    return Icons.alarm_rounded;
+  }
+  if (normalized.contains('문자')) return Icons.sms_outlined;
+  if (normalized.contains('교통')) return Icons.local_taxi_rounded;
+  if (normalized.contains('식비')) return Icons.ramen_dining_rounded;
+  return Icons.account_balance_wallet_rounded;
 }
 
 class WalletKeeperPhotoPickerPage extends StatefulWidget {
@@ -3377,42 +4733,215 @@ class WalletKeeperPhotoPickerPage extends StatefulWidget {
 }
 
 class _WalletKeeperPhotoPickerPageState
-    extends State<WalletKeeperPhotoPickerPage> {
+    extends State<WalletKeeperPhotoPickerPage> with WidgetsBindingObserver {
   final ImagePicker _picker = ImagePicker();
+  final ValueNotifier<List<String>> _selectedAssetIds =
+      ValueNotifier<List<String>>(<String>[]);
   late List<String> _selectedPaths;
-  bool _loading = false;
+  final ScrollController _scrollController = ScrollController();
+  List<AssetPathEntity> _albums = const <AssetPathEntity>[];
+  AssetPathEntity? _currentAlbum;
+  List<AssetEntity> _mediaList = const <AssetEntity>[];
+  bool _loading = true;
+  bool _permissionDenied = false;
+  bool _waitingForSettingsReturn = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _selectedPaths = List<String>.from(widget.initialPaths);
+    _loadAlbums();
   }
 
-  Future<void> _pickFromGallery() async {
-    setState(() => _loading = true);
-    try {
-      final files = await _picker.pickMultiImage(
-        maxWidth: 2400,
-        maxHeight: 2400,
-        imageQuality: 92,
-      );
-      if (files.isEmpty || !mounted) return;
-      final next = List<String>.from(_selectedPaths);
-      for (final file in files) {
-        if (!next.contains(file.path)) {
-          next.add(file.path);
-        }
-      }
-      setState(() {
-        _selectedPaths = next;
-      });
-    } finally {
-      if (mounted) setState(() => _loading = false);
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _selectedAssetIds.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed && _waitingForSettingsReturn) {
+      _waitingForSettingsReturn = false;
+      _loadAlbums();
     }
   }
 
+  bool _isPhotoPermissionError(Object error) {
+    if (error is! PlatformException) {
+      return false;
+    }
+    final code = error.code.toLowerCase();
+    final message = (error.message ?? '').toLowerCase();
+    return code.contains('permission') ||
+        message.contains('permission') ||
+        message.contains('denied');
+  }
+
+  Future<PermissionStatus> _requestGalleryPermissionStatus() async {
+    if (!Platform.isAndroid && !Platform.isIOS) {
+      return PermissionStatus.granted;
+    }
+    var status = await Permission.photos.status;
+    if (status.isGranted || status.isLimited) {
+      return status;
+    }
+    if (status.isPermanentlyDenied || status.isRestricted) {
+      return status;
+    }
+    status = await Permission.photos.request();
+    return status;
+  }
+
+  Future<bool> _requestGalleryPermissionSafely() async {
+    final status = await _requestGalleryPermissionStatus();
+    return status.isGranted || status.isLimited;
+  }
+
+  Future<void> _handleGalleryPermissionRetry() async {
+    if (!Platform.isAndroid && !Platform.isIOS) {
+      await _loadAlbums();
+      return;
+    }
+    PermissionStatus status;
+    try {
+      status = await Permission.photos.request();
+    } on PlatformException {
+      _waitingForSettingsReturn = true;
+      await openAppSettings();
+      return;
+    }
+    if (status.isGranted || status.isLimited) {
+      await _loadAlbums();
+      return;
+    }
+    if (status.isPermanentlyDenied || status.isRestricted) {
+      _waitingForSettingsReturn = true;
+      await openAppSettings();
+      return;
+    }
+    await showAppToast('갤러리 권한을 허용해야 사진을 선택할 수 있습니다.');
+    if (!mounted) return;
+    setState(() {
+      _permissionDenied = true;
+      _loading = false;
+    });
+  }
+
+  Future<void> _loadAlbums() async {
+    setState(() {
+      _loading = true;
+      _permissionDenied = false;
+    });
+    try {
+      final hasPermission = await _requestGalleryPermissionSafely();
+      if (!hasPermission) {
+        if (!mounted) return;
+        setState(() {
+          _loading = false;
+          _permissionDenied = true;
+        });
+        return;
+      }
+      final albums = await PhotoManager.getAssetPathList(
+        type: RequestType.image,
+        filterOption: FilterOptionGroup(
+          imageOption: const FilterOption(
+            sizeConstraint: SizeConstraint(ignoreSize: true),
+          ),
+        ),
+      );
+      if (!mounted) return;
+      _albums = albums;
+      _currentAlbum = albums.isEmpty ? null : albums.first;
+      await _loadImages();
+    } catch (error) {
+      if (!mounted) return;
+      if (_isPhotoPermissionError(error)) {
+        setState(() {
+          _loading = false;
+          _permissionDenied = true;
+        });
+        return;
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> _loadImages() async {
+    final album = _currentAlbum;
+    if (album == null) {
+      if (!mounted) return;
+      setState(() {
+        _mediaList = const <AssetEntity>[];
+        _loading = false;
+      });
+      return;
+    }
+    try {
+      final totalCount = await album.assetCountAsync;
+      final media = await album.getAssetListRange(start: 0, end: totalCount);
+      if (!mounted) return;
+      setState(() {
+        _mediaList = media;
+        _loading = false;
+      });
+      await _restoreSelections();
+    } catch (error) {
+      if (!mounted) return;
+      if (_isPhotoPermissionError(error)) {
+        setState(() {
+          _mediaList = const <AssetEntity>[];
+          _loading = false;
+          _permissionDenied = true;
+        });
+        return;
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> _restoreSelections() async {
+    if (_selectedPaths.isEmpty || _mediaList.isEmpty) {
+      _selectedAssetIds.value = <String>[];
+      return;
+    }
+    final restored = <String>[];
+    for (final selectedPath in _selectedPaths) {
+      final selectedName = selectedPath.split(Platform.pathSeparator).last;
+      for (final media in _mediaList) {
+        final title = media.title ?? '';
+        if (title == selectedName) {
+          restored.add(media.id);
+          break;
+        }
+        final file = await media.file;
+        if (file != null &&
+            (file.path == selectedPath ||
+                file.path.split(Platform.pathSeparator).last == selectedName)) {
+          restored.add(media.id);
+          break;
+        }
+      }
+    }
+    _selectedAssetIds.value = restored;
+  }
+
+  void _handleAssetTap(AssetEntity media) {
+    final next = List<String>.from(_selectedAssetIds.value);
+    if (next.contains(media.id)) {
+      next.remove(media.id);
+    } else {
+      next.add(media.id);
+    }
+    _selectedAssetIds.value = next;
+  }
+
   Future<void> _pickFromCamera() async {
-    setState(() => _loading = true);
     try {
       final file = await _picker.pickImage(
         source: ImageSource.camera,
@@ -3421,228 +4950,361 @@ class _WalletKeeperPhotoPickerPageState
         imageQuality: 92,
       );
       if (file == null || !mounted) return;
-      setState(() {
-        if (!_selectedPaths.contains(file.path)) {
-          _selectedPaths = [..._selectedPaths, file.path];
-        }
-      });
-    } finally {
-      if (mounted) setState(() => _loading = false);
+      if (!_selectedPaths.contains(file.path)) {
+        _selectedPaths = [..._selectedPaths, file.path];
+      }
+      Navigator.of(context).pop(_selectedPaths);
+    } catch (_) {
+      await showAppToast('카메라를 열 수 없습니다.');
     }
+  }
+
+  Future<void> _completeSelection() async {
+    final selectedIds = _selectedAssetIds.value;
+    if (selectedIds.isEmpty) {
+      Navigator.of(context).pop(_selectedPaths);
+      return;
+    }
+    final imagePaths = <String>[];
+    for (final imageId in selectedIds) {
+      final media = _mediaList.cast<AssetEntity?>().firstWhere(
+            (item) => item?.id == imageId,
+            orElse: () => null,
+          );
+      if (media == null) continue;
+      final file = await media.file;
+      if (file != null) {
+        imagePaths.add(file.path);
+      }
+    }
+    if (!mounted) return;
+    Navigator.of(context).pop(imagePaths);
+  }
+
+  void _showAlbumSelector() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          top: false,
+          child: ListView(
+            shrinkWrap: true,
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+            children: [
+              Center(
+                child: Container(
+                  width: 42,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFD8DEE6),
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                '앨범',
+                style: TextStyle(
+                  color: Color(0xFF14171C),
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 12),
+              ..._albums.map((album) {
+                final selected = album == _currentAlbum;
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(
+                    album.name,
+                    style: TextStyle(
+                      color: const Color(0xFF14171C),
+                      fontSize: 14,
+                      fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                    ),
+                  ),
+                  trailing: selected
+                      ? const Icon(Icons.check_rounded, color: Color(0xFFFF6A5F))
+                      : null,
+                  onTap: () async {
+                    Navigator.of(context).pop();
+                    setState(() {
+                      _currentAlbum = album;
+                      _loading = true;
+                    });
+                    await _loadImages();
+                  },
+                );
+              }),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildPermissionDeniedView() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
+              Icons.photo_library_outlined,
+              size: 64,
+              color: Color(0xFFB7BFCA),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              '갤러리 접근 권한이 필요합니다',
+              style: TextStyle(
+                color: Color(0xFF14171C),
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              '사진을 선택하려면 갤러리 접근을 허용해야 합니다.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Color(0xFF7B8491),
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 18),
+            FilledButton(
+              onPressed: _handleGalleryPermissionRetry,
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFFF6A5F),
+                minimumSize: const Size.fromHeight(46),
+              ),
+              child: const Text('권한 확인하기'),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton(
+              onPressed: () async {
+                _waitingForSettingsReturn = true;
+                await PhotoManager.openSetting();
+              },
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFFFF6A5F),
+                minimumSize: const Size.fromHeight(46),
+                side: const BorderSide(color: Color(0xFFFF6A5F)),
+              ),
+              child: const Text('설정에서 권한 허용하기'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      color: const Color(0xFFF7F8FA),
-      child: Column(
-        children: [
-          _CompactPageHeader(
-            title: '사진 추가',
-            onBack: () => Navigator.of(context).pop(),
-            trailing: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(_selectedPaths),
-                child: const Text(
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.close, color: Colors.black),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        title: GestureDetector(
+          onTap: _albums.isEmpty ? null : _showAlbumSelector,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _currentAlbum?.name ?? '최근항목',
+                style: const TextStyle(
+                  color: Colors.black,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(width: 4),
+              const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.black),
+            ],
+          ),
+        ),
+        actions: [
+          ValueListenableBuilder<List<String>>(
+            valueListenable: _selectedAssetIds,
+            builder: (context, selected, child) {
+              return TextButton(
+                onPressed: selected.isNotEmpty || _selectedPaths.isNotEmpty
+                    ? _completeSelection
+                    : null,
+                child: Text(
                   '완료',
                   style: TextStyle(
-                    color: Color(0xFFFF6A5F),
-                    fontSize: 14,
-                    fontWeight: FontWeight.w800,
+                    color: selected.isNotEmpty || _selectedPaths.isNotEmpty
+                        ? const Color(0xFFFF6A5F)
+                        : const Color(0xFFB7BFCA),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              );
+            },
+          ),
+          const SizedBox(width: 4),
+        ],
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _permissionDenied
+              ? _buildPermissionDeniedView()
+              : Column(
+                  children: [
+                    Expanded(
+                      child: GridView.builder(
+                        controller: _scrollController,
+                        padding: const EdgeInsets.only(
+                          left: 2,
+                          top: 2,
+                          right: 2,
+                          bottom: 2,
+                        ),
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 4,
+                          crossAxisSpacing: 2,
+                          mainAxisSpacing: 2,
+                        ),
+                        itemCount: _mediaList.length,
+                        itemBuilder: (context, index) {
+                          final media = _mediaList[index];
+                          return _WalletKeeperGridImageItem(
+                            key: ValueKey(media.id),
+                            media: media,
+                            selectedAssetIds: _selectedAssetIds,
+                            onTap: () => _handleAssetTap(media),
+                          );
+                        },
+                      ),
+                    ),
+                    SafeArea(
+                      top: false,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.05),
+                              blurRadius: 10,
+                              offset: const Offset(0, -2),
+                            ),
+                          ],
+                        ),
+                        child: Center(
+                          child: IconButton(
+                            icon: const Icon(
+                              Icons.camera_alt,
+                              size: 32,
+                              color: Color(0xFF5E6672),
+                            ),
+                            onPressed: _pickFromCamera,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+    );
+  }
+}
+
+class _WalletKeeperGridImageItem extends StatelessWidget {
+  const _WalletKeeperGridImageItem({
+    super.key,
+    required this.media,
+    required this.selectedAssetIds,
+    required this.onTap,
+  });
+
+  final AssetEntity media;
+  final ValueNotifier<List<String>> selectedAssetIds;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<List<String>>(
+      valueListenable: selectedAssetIds,
+      builder: (context, selected, child) {
+        final isSelected = selected.contains(media.id);
+        final selectionNumber = isSelected ? selected.indexOf(media.id) + 1 : 0;
+        return GestureDetector(
+          onTap: onTap,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              FutureBuilder<Uint8List?>(
+                future: media.thumbnailDataWithSize(
+                  const ThumbnailSize.square(300),
+                ),
+                builder: (context, snapshot) {
+                  final bytes = snapshot.data;
+                  if (bytes == null || bytes.isEmpty) {
+                    return Container(
+                      color: const Color(0xFFF2F4F7),
+                    );
+                  }
+                  return Image.memory(
+                    bytes,
+                    fit: BoxFit.cover,
+                    gaplessPlayback: true,
+                  );
+                },
+              ),
+              if (isSelected)
+                Container(
+                  color: const Color(0x66000000),
+                ),
+              Positioned(
+                top: 8,
+                right: 8,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? const Color(0xFFFF6A5F)
+                        : Colors.white.withValues(alpha: 0.92),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: isSelected
+                          ? Colors.white
+                          : const Color(0xFFD8DEE6),
+                      width: 1.4,
+                    ),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    isSelected ? '$selectionNumber' : '',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
               ),
             ],
           ),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: _PhotoPickerActionTile(
-                        icon: Icons.photo_library_outlined,
-                        title: '갤러리',
-                        subtitle: '여러 장 선택',
-                        onTap: _loading ? null : _pickFromGallery,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _PhotoPickerActionTile(
-                        icon: Icons.photo_camera_outlined,
-                        title: '카메라',
-                        subtitle: '즉시 촬영',
-                        onTap: _loading ? null : _pickFromCamera,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: const Color(0xFFE6EAF0)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '선택된 사진 ${_selectedPaths.length}장',
-                        style: const TextStyle(
-                          color: Color(0xFF14171C),
-                          fontSize: 14,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      if (_selectedPaths.isEmpty)
-                        const Text(
-                          '아직 선택된 사진이 없습니다.',
-                          style: TextStyle(
-                            color: Color(0xFF8D95A1),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        )
-                      else
-                        ListView.separated(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: _selectedPaths.length,
-                          separatorBuilder: (context, index) =>
-                              const SizedBox(height: 10),
-                          itemBuilder: (context, index) {
-                            final path = _selectedPaths[index];
-                            return Container(
-                              padding:
-                                  const EdgeInsets.fromLTRB(10, 10, 10, 10),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFF7F8FA),
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                              child: Row(
-                                children: [
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(10),
-                                    child: Image.file(
-                                      File(path),
-                                      width: 62,
-                                      height: 62,
-                                      fit: BoxFit.cover,
-                                      errorBuilder:
-                                          (context, error, stackTrace) =>
-                                              Container(
-                                        width: 62,
-                                        height: 62,
-                                        color: const Color(0xFFE9EEF4),
-                                        alignment: Alignment.center,
-                                        child: const Icon(
-                                          Icons.broken_image_outlined,
-                                          color: Color(0xFF9AA3B2),
-                                          size: 18,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Text(
-                                      path.split(Platform.pathSeparator).last,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        color: Color(0xFF14171C),
-                                        fontSize: 12,
-                                        height: 1.35,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                  ),
-                                  IconButton(
-                                    onPressed: () {
-                                      setState(() {
-                                        _selectedPaths =
-                                            List<String>.from(_selectedPaths)
-                                              ..removeAt(index);
-                                      });
-                                    },
-                                    icon: const Icon(
-                                      Icons.close_rounded,
-                                      size: 18,
-                                      color: Color(0xFF9AA3B2),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PhotoPickerActionTile extends StatelessWidget {
-  const _PhotoPickerActionTile({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(18),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: const Color(0xFFE6EAF0)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, size: 22, color: const Color(0xFFFF6A5F)),
-            const SizedBox(height: 10),
-            Text(
-              title,
-              style: const TextStyle(
-                color: Color(0xFF14171C),
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              subtitle,
-              style: const TextStyle(
-                color: Color(0xFF7B8491),
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ),
+        );
+      },
     );
   }
 }
@@ -3750,3 +5412,4 @@ class _SettingsKeyValue {
   final String label;
   final String value;
 }
+

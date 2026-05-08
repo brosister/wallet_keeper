@@ -6,7 +6,7 @@ data class NativeFinancialMessage(
 )
 
 object WalletKeeperNativeFinancialMessageParser {
-    private val amountPattern = Regex("""([0-9][0-9,]{2,})\s*원""")
+    private val amountPattern = Regex("""([0-9][0-9,]*)\s*원""")
     private val requiredKeywords =
         listOf(
             "입금",
@@ -43,8 +43,6 @@ object WalletKeeperNativeFinancialMessageParser {
             .replace(Regex("""\s+"""), " ")
             .trim()
         val amountMatch = amountPattern.find(normalized) ?: return null
-        val amountDigits = amountMatch.groupValues[1].replace(",", "")
-        if (amountDigits.length < 3) return null
         val amount = "${amountMatch.groupValues[1]}원"
         val lower = normalized.lowercase()
         if (marketingKeywords.any { lower.contains(it.lowercase()) }) {

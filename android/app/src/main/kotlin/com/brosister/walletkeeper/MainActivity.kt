@@ -1,5 +1,9 @@
 package com.brosister.walletkeeper
 
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.drawable.AdaptiveIconDrawable
+import android.graphics.drawable.BitmapDrawable
 import android.content.Context
 import android.content.Intent
 import android.provider.Settings
@@ -52,6 +56,13 @@ class MainActivity : FlutterActivity() {
                         result.success(MmsReader.consumePendingMms(this))
                     } catch (error: Exception) {
                         result.error("mms_query_failed", error.message, null)
+                    }
+                }
+                "consumePendingAppNotifications" -> {
+                    try {
+                        result.success(WalletKeeperNotificationReader.consumePendingNotifications(this))
+                    } catch (error: Exception) {
+                        result.error("notification_consume_failed", error.message, null)
                     }
                 }
 
@@ -113,6 +124,18 @@ class MainActivity : FlutterActivity() {
                         result.error("notification_access_settings_failed", error.message, null)
                     }
                 }
+                "getApplicationIconBytes" -> {
+                    try {
+                        val packageName = call.argument<String>("packageName")?.trim().orEmpty()
+                        if (packageName.isEmpty()) {
+                            result.success(null)
+                        } else {
+                            result.success(getApplicationIconBytes(packageName))
+                        }
+                    } catch (error: Exception) {
+                        result.error("application_icon_failed", error.message, null)
+                    }
+                }
                 else -> result.notImplemented()
             }
         }
@@ -142,5 +165,33 @@ class MainActivity : FlutterActivity() {
             listener.contains(packageName, ignoreCase = true) &&
                 listener.contains("WalletKeeperNotificationListenerService")
         }
+    }
+
+    private fun getApplicationIconBytes(targetPackageName: String): ByteArray? {
+        val drawable = packageManager.getApplicationIcon(targetPackageName)
+        val bitmap = when (drawable) {
+            is BitmapDrawable -> drawable.bitmap
+            is AdaptiveIconDrawable -> {
+                val width = drawable.intrinsicWidth.coerceAtLeast(1)
+                val height = drawable.intrinsicHeight.coerceAtLeast(1)
+                Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { bitmap ->
+                    val canvas = Canvas(bitmap)
+                    drawable.setBounds(0, 0, canvas.width, canvas.height)
+                    drawable.draw(canvas)
+                }
+            }
+            else -> {
+                val width = drawable.intrinsicWidth.coerceAtLeast(1)
+                val height = drawable.intrinsicHeight.coerceAtLeast(1)
+                Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { bitmap ->
+                    val canvas = Canvas(bitmap)
+                    drawable.setBounds(0, 0, canvas.width, canvas.height)
+                    drawable.draw(canvas)
+                }
+            }
+        }
+        val output = java.io.ByteArrayOutputStream()
+        bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
+        return output.toByteArray()
     }
 }

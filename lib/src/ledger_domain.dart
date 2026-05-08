@@ -235,6 +235,19 @@ class WalletKeeperNotificationAccessRepository {
       return false;
     }
   }
+
+  Future<Uint8List?> getApplicationIconBytes(String packageName) async {
+    if (!Platform.isAndroid || packageName.trim().isEmpty) return null;
+    try {
+      final bytes = await _notificationAccessChannel.invokeMethod<Uint8List>(
+        'getApplicationIconBytes',
+        <String, dynamic>{'packageName': packageName.trim()},
+      );
+      return bytes;
+    } catch (_) {
+      return null;
+    }
+  }
 }
 
 class WalletKeeperParsedMessage {
@@ -273,10 +286,10 @@ class WalletKeeperParsedMessage {
   WalletKeeperSmsDraft toDraft() {
     return WalletKeeperSmsDraft(
       id: sourceId,
-      title: title,
+      title: content.trim().isEmpty ? title : content,
       amount: amount.toDouble(),
       category: category,
-      note: content,
+      note: '',
       rawBody: rawBody,
       type: type,
       date: date,
@@ -285,6 +298,7 @@ class WalletKeeperParsedMessage {
       institution: institution,
       eventType: eventType,
       matchedRule: matchedRule,
+      sourceAppIconBase64: '',
     );
   }
 }
@@ -304,6 +318,7 @@ class WalletKeeperSmsDraft {
     required this.institution,
     required this.eventType,
     required this.matchedRule,
+    required this.sourceAppIconBase64,
   });
 
   final String id;
@@ -319,6 +334,41 @@ class WalletKeeperSmsDraft {
   final String institution;
   final String eventType;
   final String matchedRule;
+  final String sourceAppIconBase64;
+
+  WalletKeeperSmsDraft copyWith({
+    String? id,
+    String? title,
+    double? amount,
+    String? category,
+    String? note,
+    String? rawBody,
+    EntryType? type,
+    DateTime? date,
+    String? sourceAddress,
+    String? sourceType,
+    String? institution,
+    String? eventType,
+    String? matchedRule,
+    String? sourceAppIconBase64,
+  }) {
+    return WalletKeeperSmsDraft(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      amount: amount ?? this.amount,
+      category: category ?? this.category,
+      note: note ?? this.note,
+      rawBody: rawBody ?? this.rawBody,
+      type: type ?? this.type,
+      date: date ?? this.date,
+      sourceAddress: sourceAddress ?? this.sourceAddress,
+      sourceType: sourceType ?? this.sourceType,
+      institution: institution ?? this.institution,
+      eventType: eventType ?? this.eventType,
+      matchedRule: matchedRule ?? this.matchedRule,
+      sourceAppIconBase64: sourceAppIconBase64 ?? this.sourceAppIconBase64,
+    );
+  }
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -334,23 +384,31 @@ class WalletKeeperSmsDraft {
     'institution': institution,
     'eventType': eventType,
     'matchedRule': matchedRule,
+    'sourceAppIconBase64': sourceAppIconBase64,
   };
 
   factory WalletKeeperSmsDraft.fromJson(Map<String, dynamic> json) {
+    final rawType = (json['type']?.toString().trim().isNotEmpty ?? false)
+        ? json['type'].toString().trim()
+        : EntryType.expense.name;
+    final rawDate = json['date']?.toString();
     return WalletKeeperSmsDraft(
-      id: json['id'] as String,
-      title: json['title'] as String,
-      amount: (json['amount'] as num).toDouble(),
-      category: json['category'] as String,
-      note: json['note'] as String? ?? '',
-      rawBody: json['rawBody'] as String? ?? '',
-      type: EntryType.values.byName(json['type'] as String),
-      date: DateTime.parse(json['date'] as String),
-      sourceAddress: json['sourceAddress'] as String? ?? '',
-      sourceType: json['sourceType'] as String? ?? 'sms',
-      institution: json['institution'] as String? ?? '',
-      eventType: json['eventType'] as String? ?? '',
-      matchedRule: json['matchedRule'] as String? ?? '',
+      id: json['id']?.toString() ?? '',
+      title: json['title']?.toString() ?? '',
+      amount: (json['amount'] as num?)?.toDouble() ?? 0,
+      category: json['category']?.toString() ?? '',
+      note: json['note']?.toString() ?? '',
+      rawBody: json['rawBody']?.toString() ?? '',
+      type: EntryType.values.byName(rawType),
+      date: rawDate == null || rawDate.isEmpty
+          ? DateTime.now()
+          : DateTime.parse(rawDate),
+      sourceAddress: json['sourceAddress']?.toString() ?? '',
+      sourceType: json['sourceType']?.toString() ?? 'sms',
+      institution: json['institution']?.toString() ?? '',
+      eventType: json['eventType']?.toString() ?? '',
+      matchedRule: json['matchedRule']?.toString() ?? '',
+      sourceAppIconBase64: json['sourceAppIconBase64']?.toString() ?? '',
     );
   }
 
@@ -686,6 +744,45 @@ class WalletKeeperSmsAutomationRepository {
     return drafts;
   }
 
+  Future<List<WalletKeeperSmsDraft>> consumePendingAppNotifications() async {
+    if (!Platform.isAndroid) return const [];
+    final raw = await _mmsReaderChannel.invokeMethod<List<dynamic>>(
+      'consumePendingAppNotifications',
+    );
+    if (raw == null) return const [];
+    final drafts = <WalletKeeperSmsDraft>[];
+    for (final item in raw) {
+      if (item is! Map) continue;
+      final body = (item['body'] as String?)?.trim() ?? '';
+      if (body.isEmpty) continue;
+      final titleHint = (item['titleHint'] as String?)?.trim() ?? '';
+      final textBody = (item['textBody'] as String?)?.trim() ?? '';
+      final sourceAddress = (item['address'] as String?)?.trim() ?? '';
+      final draft = WalletKeeperSmsParser.parseRawMessage(
+        body: textBody.isNotEmpty ? textBody : body,
+        sender: sourceAddress,
+        dateMillis:
+            (item['dateMillis'] as num?)?.toInt() ??
+            DateTime.now().millisecondsSinceEpoch,
+        sourceId: (item['id'] as String?)?.trim(),
+        sourceType: 'app_notification',
+        titleHint: titleHint,
+        rawBodyOverride: body,
+      );
+      if (draft != null) {
+        final iconBytes = await const WalletKeeperNotificationAccessRepository()
+            .getApplicationIconBytes(sourceAddress);
+        drafts.add(
+          draft.toDraft().copyWith(
+            sourceAppIconBase64:
+                iconBytes == null || iconBytes.isEmpty ? '' : base64Encode(iconBytes),
+          ),
+        );
+      }
+    }
+    return drafts;
+  }
+
   Future<List<WalletKeeperSmsDraft>> findUnprocessedRecentMms({
     int recentMinutes = 30,
     int limit = 12,
@@ -832,23 +929,43 @@ class WalletKeeperSmsParser {
     required int dateMillis,
     String? sourceId,
     String sourceType = 'sms',
+    String titleHint = '',
+    String? rawBodyOverride,
   }) {
     if (body.isEmpty) return null;
     final normalized = _normalizeForParsing(body);
-    final institution = _resolveInstitution(normalized, sender);
-    final eventType = _resolveEventType(normalized);
-    final type = _resolveType(eventType, normalized);
+    final normalizedTitle = _normalizeForParsing(titleHint);
+    final institution = _resolveInstitution(
+      [normalizedTitle, normalized].where((item) => item.isNotEmpty).join(' '),
+      sender,
+    );
+    final eventType = _resolveEventType(
+      normalizedTitle.isNotEmpty ? '$normalizedTitle $normalized' : normalized,
+    );
+    final type = _resolveType(
+      eventType,
+      normalizedTitle.isNotEmpty ? '$normalizedTitle $normalized' : normalized,
+    );
     if (type == null) return null;
-    final amount = _extractAmount(normalized, type);
+    final amount = _extractAmount(
+      normalizedTitle.isNotEmpty ? '$normalizedTitle $normalized' : normalized,
+      type,
+    );
     if (amount == null) return null;
     final receivedDate = DateTime.fromMillisecondsSinceEpoch(dateMillis);
     final date = _extractTransactionDate(
-          normalized,
+          normalizedTitle.isNotEmpty ? '$normalizedTitle $normalized' : normalized,
           eventType: eventType,
           fallback: receivedDate,
         ) ??
         receivedDate;
-    final target = _extractTarget(normalized, eventType, institution);
+    final target = _extractTarget(
+      normalized,
+      eventType,
+      institution,
+      sourceType: sourceType,
+      titleHint: normalizedTitle,
+    );
     final matchedRule = _buildMatchedRule(
       institution: institution,
       eventType: eventType,
@@ -856,7 +973,7 @@ class WalletKeeperSmsParser {
       type: type,
     );
     final title = _resolveTitle(
-      normalized,
+      normalizedTitle.isNotEmpty ? '$normalizedTitle $normalized' : normalized,
       sender,
       institution,
       eventType,
@@ -864,7 +981,7 @@ class WalletKeeperSmsParser {
       type,
     );
     final category = _resolveCategory(
-      normalized,
+      normalizedTitle.isNotEmpty ? '$normalizedTitle $normalized' : normalized,
       type,
       institution,
       eventType,
@@ -876,6 +993,8 @@ class WalletKeeperSmsParser {
       eventType,
       target,
       type,
+      sourceType: sourceType,
+      titleHint: normalizedTitle,
     );
     final id = sourceId ??
         base64Url.encode(
@@ -887,7 +1006,7 @@ class WalletKeeperSmsParser {
       title: title,
       category: category,
       content: content,
-      rawBody: body,
+      rawBody: rawBodyOverride ?? body,
       normalizedBody: normalized,
       sourceType: sourceType,
       institution: institution,
@@ -946,6 +1065,15 @@ class WalletKeeperSmsParser {
     if (leadingMatch != null) {
       final month = int.tryParse(leadingMatch.group(1) ?? '');
       final day = int.tryParse(leadingMatch.group(2) ?? '');
+      final date = _safeDate(fallback.year, month, day, fallback);
+      if (date != null) return _adjustYearIfNeeded(date, fallback, eventType);
+    }
+
+    final leadingDateTime = RegExp(r'^(?:[가-힣A-Za-z0-9*]+님?\s+)?(\d{1,2})/(\d{1,2})\s+\d{1,2}:\d{2}');
+    final leadingDateTimeMatch = leadingDateTime.firstMatch(body);
+    if (leadingDateTimeMatch != null) {
+      final month = int.tryParse(leadingDateTimeMatch.group(1) ?? '');
+      final day = int.tryParse(leadingDateTimeMatch.group(2) ?? '');
       final date = _safeDate(fallback.year, month, day, fallback);
       if (date != null) return _adjustYearIfNeeded(date, fallback, eventType);
     }
@@ -1046,7 +1174,6 @@ class WalletKeeperSmsParser {
       final raw = match.group(1);
       final amount = int.tryParse(raw?.replaceAll(',', '') ?? '');
       if (amount == null || amount <= 0) continue;
-      if ((raw?.replaceAll(',', '').length ?? 0) < 3) continue;
       final start = match.start;
       final end = match.end;
       final contextStart = math.max(0, start - 16);
@@ -1101,7 +1228,7 @@ class WalletKeeperSmsParser {
       if (match == null) continue;
       final raw = match.group(1);
       final amount = int.tryParse(raw?.replaceAll(',', '') ?? '');
-      if (amount != null && amount > 0 && (raw?.replaceAll(',', '').length ?? 0) >= 3) {
+      if (amount != null && amount > 0) {
         return amount;
       }
     }
@@ -1200,10 +1327,15 @@ class WalletKeeperSmsParser {
     String body,
     String eventType,
     String institution,
-  ) {
+    {
+    String sourceType = 'sms',
+    String titleHint = '',
+  }) {
     if (eventType == '카드대금') {
       return '카드대금';
     }
+
+    final combined = titleHint.isNotEmpty ? '$titleHint $body' : body;
 
     final slashMatch = RegExp(r'/\s*([^/]+)$').firstMatch(body);
     final slashTarget = _cleanTargetCandidate(slashMatch?.group(1) ?? '');
@@ -1232,7 +1364,7 @@ class WalletKeeperSmsParser {
     }
 
     final depositorPattern = RegExp(
-      r'(?:\]\s*)?(?:\d{2}/\d{2}\s+\d{1,2}:\d{2}\s+)?([가-힣A-Za-z0-9 ]{2,20}?)(?:님)?\s+[0-9][0-9,]{2,}\s*원\s*입금',
+      r'(?:\]\s*)?(?:[가-힣A-Za-z0-9*]+\s+)?(?:\d{2}/\d{2}\s+\d{1,2}:\d{2}\s+)?([가-힣A-Za-z0-9 ]{2,20}?)(?:님)?\s+[0-9][0-9,]{2,}\s*원?\s*입금',
     ).firstMatch(body);
     final depositor = _cleanTargetCandidate(depositorPattern?.group(1) ?? '');
     if (depositor.isNotEmpty) {
@@ -1241,8 +1373,8 @@ class WalletKeeperSmsParser {
 
     if (eventType == '입금' || eventType == '환불') {
       final trailingIncome = RegExp(
-        r'(?:입금|환불|카드취소|결제취소)\s*[0-9][0-9,]{2,}\s*원(?:\s*\([^)]*\))?\s*(.+)$',
-      ).firstMatch(body);
+        r'(?:입금|환불|카드취소|결제취소)\s*[0-9][0-9,]{2,}\s*원?(?:\s*\([^)]*\))?\s*(.+)$',
+      ).firstMatch(combined);
       final trailingIncomeTarget = _cleanTargetCandidate(
         trailingIncome?.group(1) ?? '',
       );
@@ -1253,12 +1385,30 @@ class WalletKeeperSmsParser {
 
     if (eventType == '자동이체' || eventType == '납부') {
       final trailing = RegExp(
-        r'(?:자동이체|납부|출금)\s*[0-9][0-9,]{2,}\s*원(?:\s*(?:출금|납부))?\s*(.+)$',
-      ).firstMatch(body);
+        r'(?:자동이체|납부|출금)\s*[0-9][0-9,]{2,}\s*원?(?:\s*(?:출금|납부))?\s*(.+)$',
+      ).firstMatch(combined);
       final trailingTarget = _cleanTargetCandidate(trailing?.group(1) ?? '');
       if (trailingTarget.isNotEmpty) {
         return trailingTarget;
       }
+    }
+
+    if (eventType == '출금') {
+      final trailingExpense = RegExp(
+        r'(?:출금|오픈뱅킹출금)\s*[0-9][0-9,]{2,}\s*원?(?:\s*잔액[0-9,]+)?\s*(.+)$',
+      ).firstMatch(combined);
+      final trailingExpenseTarget = _cleanTargetCandidate(
+        trailingExpense?.group(1) ?? '',
+      );
+      if (trailingExpenseTarget.isNotEmpty) {
+        return trailingExpenseTarget;
+      }
+    }
+
+    if (sourceType == 'app_notification' &&
+        (_containsAny(combined, const ['오픈뱅킹', '잔액']) ||
+            RegExp(r'\d{2,}-\*{2,}-\*{2,}\d+').hasMatch(combined))) {
+      return '';
     }
 
     if (institution.isNotEmpty && institution != body) {
@@ -1356,7 +1506,14 @@ class WalletKeeperSmsParser {
     for (final entry in categoryMap.entries) {
       if (searchText.contains(entry.key)) return entry.value;
     }
-    return '문자 감지';
+    switch (type) {
+      case EntryType.expense:
+        return eventType == '자동이체' || eventType == '납부' ? '고정비' : '지출';
+      case EntryType.income:
+        return '수입';
+      case EntryType.transfer:
+        return '이체';
+    }
   }
 
   static String _resolveContent(
@@ -1365,8 +1522,16 @@ class WalletKeeperSmsParser {
     String eventType,
     String target,
     EntryType type,
-  ) {
+    {
+    String sourceType = 'sms',
+    String titleHint = '',
+  }) {
     final cleanTarget = target.trim();
+    final combined = titleHint.isNotEmpty ? '$titleHint $body' : body;
+    final appNotificationShouldSimplify =
+        sourceType == 'app_notification' &&
+        (_containsAny(combined, const ['오픈뱅킹', '잔액']) ||
+            RegExp(r'\d{2,}-\*{2,}-\*{2,}\d+').hasMatch(combined));
     if (eventType == '카드대금') {
       if (institution.isNotEmpty) {
         return '$institution 카드대금';
@@ -1398,12 +1563,18 @@ class WalletKeeperSmsParser {
       return '${institution.isNotEmpty ? institution : '카드'} 결제';
     }
     if (eventType == '출금') {
+      if (appNotificationShouldSimplify) {
+        return '출금';
+      }
       if (cleanTarget.isNotEmpty && cleanTarget != institution) {
         return '$cleanTarget 출금';
       }
       return '${institution.isNotEmpty ? institution : '계좌'} 출금';
     }
     if (eventType == '이체') {
+      if (appNotificationShouldSimplify) {
+        return '이체';
+      }
       if (cleanTarget.isNotEmpty && cleanTarget != institution) {
         return '$cleanTarget 이체';
       }
@@ -1430,19 +1601,29 @@ class WalletKeeperSmsParser {
   }
 
   static String _cleanTargetCandidate(String value) {
-    return value
+    final cleaned = value
         .replaceAll(RegExp(r'^\[.*?\]\s*'), '')
         .replaceAll(RegExp(r'https?://\S+'), '')
         .replaceAll(RegExp(r'\(\d{2}/\d{2}기준\)'), '')
+        .replaceAll(RegExp(r'\(\d{4}[-./]\d{1,2}[-./]\d{1,2}기준\)'), '')
         .replaceAll(RegExp(r'\b\d{1,2}[:.]\d{2}\b'), '')
         .replaceAll(RegExp(r'\b\d{2}/\d{2}\b'), '')
+        .replaceAll(RegExp(r'\b\d{1,2}\b(?=\s+\d{2,}-\*{2,}-\*{2,}\d+)'), '')
+        .replaceAll(RegExp(r'\b\d{2,}-\*{2,}-\*{2,}\d+\b'), '')
+        .replaceAll(RegExp(r'\b잔액\s*[0-9,]+\b'), '')
         .replaceAll(RegExp(r'\b[0-9][0-9,]{2,}\s*원\b'), '')
-        .replaceAll(RegExp(r'\b(승인|결제|사용|출금|입금|자동이체|납부|잔액|환불|카드대금|청구금액)\b'), '')
+        .replaceAll(RegExp(r'\b(승인|결제|사용|출금|입금|자동이체|오픈뱅킹출금|납부|잔액|환불|카드대금|청구금액)\b'), '')
         .replaceAll(RegExp(r'[()]+'), ' ')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim()
         .replaceAll(RegExp(r'^[\/:\-]+|[\/:\-]+$'), '')
         .trim();
+    if (cleaned.isEmpty) return '';
+    if (cleaned.length <= 1) return '';
+    if (RegExp(r'^\d+$').hasMatch(cleaned)) return '';
+    if (RegExp(r'.*\*{2,}.*').hasMatch(cleaned)) return '';
+    if (_containsAny(cleaned, const ['잔액', '오픈뱅킹'])) return '';
+    return cleaned;
   }
 
   static const List<String> _knownInstitutions = [
@@ -1648,6 +1829,66 @@ class WalletKeeperMemoRepository {
   }
 }
 
+class WalletKeeperBudgetRepository {
+  Future<List<WalletKeeperBudgetSetting>> load() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_budgetStorageKey);
+    if (raw == null || raw.isEmpty) return const [];
+    final decoded = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
+    return decoded.map(WalletKeeperBudgetSetting.fromJson).toList()
+      ..sort((a, b) {
+        final monthCompare = b.monthKey.compareTo(a.monthKey);
+        if (monthCompare != 0) return monthCompare;
+        return a.category.compareTo(b.category);
+      });
+  }
+
+  Future<void> save(List<WalletKeeperBudgetSetting> budgets) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _budgetStorageKey,
+      jsonEncode(budgets.map((budget) => budget.toJson()).toList()),
+    );
+  }
+}
+
+class WalletKeeperBudgetSetting {
+  const WalletKeeperBudgetSetting({
+    required this.id,
+    required this.category,
+    required this.amount,
+    required this.monthKey,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  final String id;
+  final String category;
+  final double amount;
+  final String monthKey;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'category': category,
+    'amount': amount,
+    'monthKey': monthKey,
+    'createdAt': createdAt.toIso8601String(),
+    'updatedAt': updatedAt.toIso8601String(),
+  };
+
+  factory WalletKeeperBudgetSetting.fromJson(Map<String, dynamic> json) =>
+      WalletKeeperBudgetSetting(
+        id: json['id'] as String,
+        category: json['category'] as String? ?? '',
+        amount: (json['amount'] as num?)?.toDouble() ?? 0,
+        monthKey: json['monthKey'] as String? ?? '',
+        createdAt: DateTime.parse(json['createdAt'] as String),
+        updatedAt: DateTime.parse(json['updatedAt'] as String),
+      );
+}
+
 class WalletKeeperMemo {
   const WalletKeeperMemo({
     required this.id,
@@ -1754,16 +1995,19 @@ class WalletKeeperSyncBundle {
   const WalletKeeperSyncBundle({
     required this.entries,
     required this.memos,
+    required this.budgets,
     required this.smsSettings,
   });
 
   final List<LedgerEntry> entries;
   final List<WalletKeeperMemo> memos;
+  final List<WalletKeeperBudgetSetting> budgets;
   final WalletKeeperSmsSettings smsSettings;
 
   Map<String, dynamic> toJson() => {
     'entries': entries.map((entry) => entry.toJson()).toList(),
     'memos': memos.map((memo) => memo.toJson()).toList(),
+    'budgets': budgets.map((budget) => budget.toJson()).toList(),
     'smsSettings': smsSettings.toJson(),
   };
 
@@ -1776,9 +2020,14 @@ class WalletKeeperSyncBundle {
         .cast<Map<String, dynamic>>()
         .map(WalletKeeperMemo.fromJson)
         .toList();
+    final budgets = ((json['budgets'] as List?) ?? const [])
+        .cast<Map<String, dynamic>>()
+        .map(WalletKeeperBudgetSetting.fromJson)
+        .toList();
     return WalletKeeperSyncBundle(
       entries: entries,
       memos: memos,
+      budgets: budgets,
       smsSettings: walletKeeperSmsSettingsFromJson(
         (json['smsSettings'] as Map?)?.cast<String, dynamic>() ?? const {},
       ),
@@ -2063,6 +2312,7 @@ class WalletKeeperCloudSyncRepository {
   Future<void> sync({
     required List<LedgerEntry> entries,
     required List<WalletKeeperMemo> memos,
+    required List<WalletKeeperBudgetSetting> budgets,
     required WalletKeeperSmsSettings smsSettings,
   }) async {
     final session = await _accountRepository.loadSession() ?? await _accountRepository.bootstrapGuest();
@@ -2079,6 +2329,7 @@ class WalletKeeperCloudSyncRepository {
         'payload': WalletKeeperSyncBundle(
           entries: entries,
           memos: memos,
+          budgets: budgets,
           smsSettings: smsSettings,
         ).toJson(),
       }),
