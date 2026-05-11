@@ -938,6 +938,7 @@ class WalletKeeperSmsParser {
     final institution = _resolveInstitution(
       [normalizedTitle, normalized].where((item) => item.isNotEmpty).join(' '),
       sender,
+      sourceType: sourceType,
     );
     final eventType = _resolveEventType(
       normalizedTitle.isNotEmpty ? '$normalizedTitle $normalized' : normalized,
@@ -1125,7 +1126,11 @@ class WalletKeeperSmsParser {
     return parsed;
   }
 
-  static String _resolveInstitution(String body, String sender) {
+  static String _resolveInstitution(
+    String body,
+    String sender, {
+    String sourceType = 'sms',
+  }) {
     final bracketMatch = RegExp(r'^\[([^\]]+)\]').firstMatch(body);
     if (bracketMatch != null) {
       final candidate = bracketMatch.group(1)?.trim() ?? '';
@@ -1137,6 +1142,9 @@ class WalletKeeperSmsParser {
       if (haystacks.any((text) => text.contains(needle))) {
         return institution;
       }
+    }
+    if (sourceType == 'app_notification' && _looksLikePackageName(sender.trim())) {
+      return '';
     }
     return sender.trim();
   }
@@ -1337,6 +1345,21 @@ class WalletKeeperSmsParser {
 
     final combined = titleHint.isNotEmpty ? '$titleHint $body' : body;
 
+    if (sourceType == 'app_notification') {
+      final pipeSegments = combined
+          .split('|')
+          .map(_cleanTargetCandidate)
+          .map(_stripPaymentInstrumentNoise)
+          .where((item) => item.isNotEmpty)
+          .where((item) => item != institution)
+          .where((item) => !_looksLikePackageName(item))
+          .where((item) => !_looksLikePaymentInstrument(item))
+          .toList();
+      if (pipeSegments.isNotEmpty) {
+        return pipeSegments.last;
+      }
+    }
+
     final slashMatch = RegExp(r'/\s*([^/]+)$').firstMatch(body);
     final slashTarget = _cleanTargetCandidate(slashMatch?.group(1) ?? '');
     if (slashTarget.isNotEmpty) {
@@ -1411,7 +1434,9 @@ class WalletKeeperSmsParser {
       return '';
     }
 
-    if (institution.isNotEmpty && institution != body) {
+    if (institution.isNotEmpty &&
+        institution != body &&
+        !(sourceType == 'app_notification' && _looksLikePackageName(institution))) {
       return institution;
     }
     return '';
@@ -1429,7 +1454,7 @@ class WalletKeeperSmsParser {
       return target;
     }
     if (institution.isNotEmpty) return institution;
-    if (sender.isNotEmpty) return sender;
+    if (sender.isNotEmpty && !_looksLikePackageName(sender)) return sender;
     switch (type) {
       case EntryType.expense:
         return eventType == '자동이체' ? '자동이체' : '문자 지출';
@@ -1624,6 +1649,30 @@ class WalletKeeperSmsParser {
     if (RegExp(r'.*\*{2,}.*').hasMatch(cleaned)) return '';
     if (_containsAny(cleaned, const ['잔액', '오픈뱅킹'])) return '';
     return cleaned;
+  }
+
+  static String _stripPaymentInstrumentNoise(String value) {
+    return value
+        .replaceAll(
+          RegExp(
+            r'\b(?:KB국민|국민|신한|우리|하나|현대|삼성|롯데|농협|NH농협|카카오|토스|IBK|기업|씨티|BC)[가-힣A-Za-z]*(?:체크|카드)\b',
+          ),
+          '',
+        )
+        .replaceAll(RegExp(r'\b(?:체크카드|신용카드|일시불|할부)\b'), '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  static bool _looksLikePaymentInstrument(String value) {
+    return RegExp(r'(체크|카드|계좌|은행|일시불|할부)').hasMatch(value);
+  }
+
+  static bool _looksLikePackageName(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return false;
+    if (!trimmed.contains('.')) return false;
+    return RegExp(r'^[a-z0-9._]+$').hasMatch(trimmed);
   }
 
   static const List<String> _knownInstitutions = [
@@ -1852,6 +1901,80 @@ class WalletKeeperBudgetRepository {
   }
 }
 
+class WalletKeeperInquiryRepository {
+  static const _baseUrl = _walletKeeperAuthBaseUri;
+  final DeviceInfoPlugin _deviceInfo = DeviceInfoPlugin();
+
+  Future<List<WalletKeeperInquiry>> fetchList(
+    WalletKeeperUserSession session,
+  ) async {
+    final response = await http.get(
+      Uri.parse('$_baseUrl/inquiries/${session.userId}'),
+      headers: _headers(session),
+    );
+    final payload = jsonDecode(
+      utf8.decode(response.bodyBytes),
+    ) as Map<String, dynamic>;
+    if (response.statusCode != 200 || payload['success'] != true) {
+      throw Exception(payload['message'] ?? '문의 목록을 불러오지 못했습니다.');
+    }
+    return (((payload['data'] as List?) ?? const [])
+            .cast<Map<String, dynamic>>()
+            .map(WalletKeeperInquiry.fromServerJson)
+            .toList()
+          ..sort((a, b) => b.createdAt.compareTo(a.createdAt)));
+  }
+
+  Future<void> submit({
+    required WalletKeeperUserSession session,
+    required String title,
+    required String content,
+    required String replyEmail,
+    String? appVersion,
+  }) async {
+    final package = await PackageInfo.fromPlatform();
+    final response = await http.post(
+      Uri.parse('$_baseUrl/inquiry'),
+      headers: _headers(session),
+      body: jsonEncode({
+        'user_id': session.userId,
+        'inquiry_type': 'inquiry',
+        'subject': title,
+        'content': content,
+        'user_email': replyEmail.trim().isEmpty ? null : replyEmail.trim(),
+        'user_name': session.name.trim().isEmpty ? null : session.name.trim(),
+        'device_info': await _buildDeviceInfoLabel(),
+        'app_version': appVersion ?? '${package.version}+${package.buildNumber}',
+      }),
+    );
+    final payload = jsonDecode(
+      utf8.decode(response.bodyBytes),
+    ) as Map<String, dynamic>;
+    if (response.statusCode != 200 || payload['success'] != true) {
+      throw Exception(payload['message'] ?? '문의 등록에 실패했습니다.');
+    }
+  }
+
+  Map<String, String> _headers(WalletKeeperUserSession session) => {
+    'Content-Type': 'application/json',
+    if (session.token.isNotEmpty) 'Authorization': 'Bearer ${session.token}',
+  };
+
+  Future<String> _buildDeviceInfoLabel() async {
+    try {
+      if (Platform.isAndroid) {
+        final info = await _deviceInfo.androidInfo;
+        return 'Android ${info.version.release} (${info.model})';
+      }
+      if (Platform.isIOS) {
+        final info = await _deviceInfo.iosInfo;
+        return 'iOS ${info.systemVersion} (${info.model})';
+      }
+    } catch (_) {}
+    return Platform.operatingSystem;
+  }
+}
+
 class WalletKeeperBudgetSetting {
   const WalletKeeperBudgetSetting({
     required this.id,
@@ -1925,6 +2048,80 @@ class WalletKeeperMemo {
   );
 }
 
+class WalletKeeperInquiry {
+  const WalletKeeperInquiry({
+    required this.id,
+    required this.inquiryType,
+    required this.title,
+    required this.content,
+    required this.status,
+    required this.adminReply,
+    required this.createdAt,
+    required this.updatedAt,
+    this.repliedAt,
+  });
+
+  final String id;
+  final String inquiryType;
+  final String title;
+  final String content;
+  final String status;
+  final String adminReply;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final DateTime? repliedAt;
+
+  bool get hasReply => adminReply.trim().isNotEmpty;
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'inquiryType': inquiryType,
+    'title': title,
+    'content': content,
+    'status': status,
+    'adminReply': adminReply,
+    'createdAt': createdAt.toIso8601String(),
+    'updatedAt': updatedAt.toIso8601String(),
+    'repliedAt': repliedAt?.toIso8601String(),
+  };
+
+  factory WalletKeeperInquiry.fromJson(Map<String, dynamic> json) =>
+      WalletKeeperInquiry(
+        id: json['id'] as String,
+        inquiryType: json['inquiryType'] as String? ?? 'inquiry',
+        title: json['title'] as String? ?? '',
+        content: json['content'] as String? ?? '',
+        status: json['status'] as String? ?? 'pending',
+        adminReply: json['adminReply'] as String? ?? '',
+        createdAt: DateTime.parse(json['createdAt'] as String),
+        updatedAt: DateTime.parse(
+          (json['updatedAt'] ?? json['createdAt']) as String,
+        ),
+        repliedAt: json['repliedAt'] == null
+            ? null
+            : DateTime.tryParse(json['repliedAt'] as String),
+      );
+
+  factory WalletKeeperInquiry.fromServerJson(Map<String, dynamic> json) {
+    final createdAt = DateTime.tryParse(
+          json['created_at']?.toString() ?? '',
+        ) ??
+        DateTime.now();
+    final repliedAt = DateTime.tryParse(json['replied_at']?.toString() ?? '');
+    return WalletKeeperInquiry(
+      id: json['id']?.toString() ?? const Uuid().v4(),
+      inquiryType: json['inquiry_type']?.toString() ?? 'inquiry',
+      title: json['subject']?.toString() ?? '',
+      content: json['content']?.toString() ?? '',
+      status: json['status']?.toString() ?? 'pending',
+      adminReply: json['admin_reply']?.toString() ?? '',
+      createdAt: createdAt,
+      updatedAt: repliedAt ?? createdAt,
+      repliedAt: repliedAt,
+    );
+  }
+}
+
 class WalletKeeperUserSession {
   const WalletKeeperUserSession({
     required this.userId,
@@ -1991,6 +2188,92 @@ class WalletKeeperUserSession {
       );
 }
 
+class WalletKeeperVersionCheckResult {
+  const WalletKeeperVersionCheckResult({
+    required this.shouldUpdate,
+    required this.forceUpdate,
+    required this.latestVersion,
+    required this.minSupportedVersion,
+    required this.updateMode,
+    required this.title,
+    required this.message,
+    required this.storeUrl,
+    required this.androidStoreUrl,
+    required this.iosStoreUrl,
+  });
+
+  final bool shouldUpdate;
+  final bool forceUpdate;
+  final String latestVersion;
+  final String minSupportedVersion;
+  final String updateMode;
+  final String title;
+  final String message;
+  final String storeUrl;
+  final String androidStoreUrl;
+  final String iosStoreUrl;
+
+  bool get hasStoreUrl => storeUrl.trim().isNotEmpty;
+
+  factory WalletKeeperVersionCheckResult.fromJson(Map<String, dynamic> json) {
+    return WalletKeeperVersionCheckResult(
+      shouldUpdate: json['shouldUpdate'] == true,
+      forceUpdate: json['forceUpdate'] == true,
+      latestVersion: json['latestVersion'] as String? ?? '',
+      minSupportedVersion: json['minSupportedVersion'] as String? ?? '',
+      updateMode: json['updateMode'] as String? ?? 'recommended',
+      title: json['title'] as String? ?? '새 버전이 있어요',
+      message: json['message'] as String? ?? '더 안정적인 사용을 위해 최신 버전으로 업데이트해 주세요.',
+      storeUrl: json['storeUrl'] as String? ?? '',
+      androidStoreUrl: json['androidStoreUrl'] as String? ?? '',
+      iosStoreUrl: json['iosStoreUrl'] as String? ?? '',
+    );
+  }
+}
+
+class WalletKeeperPolicyDocument {
+  const WalletKeeperPolicyDocument({
+    required this.id,
+    required this.title,
+    required this.content,
+    required this.type,
+    required this.version,
+    required this.effectiveDate,
+    required this.languageCode,
+    required this.requestedLanguage,
+    required this.resolvedLanguage,
+  });
+
+  final int id;
+  final String title;
+  final String content;
+  final String type;
+  final String version;
+  final DateTime effectiveDate;
+  final String languageCode;
+  final String requestedLanguage;
+  final String resolvedLanguage;
+
+  factory WalletKeeperPolicyDocument.fromJson(Map<String, dynamic> json) {
+    final effectiveDateRaw = (json['effectiveDate'] ?? '').toString().trim();
+    final parsedDate =
+        DateTime.tryParse(effectiveDateRaw) ??
+        DateTime.tryParse('${effectiveDateRaw}T00:00:00') ??
+        DateTime.now();
+    return WalletKeeperPolicyDocument(
+      id: (json['id'] as num?)?.toInt() ?? 0,
+      title: (json['title'] ?? '').toString().trim(),
+      content: (json['content'] ?? '').toString().trim(),
+      type: (json['type'] ?? '').toString().trim(),
+      version: (json['version'] ?? '').toString().trim(),
+      effectiveDate: parsedDate,
+      languageCode: (json['languageCode'] ?? '').toString().trim(),
+      requestedLanguage: (json['requestedLanguage'] ?? '').toString().trim(),
+      resolvedLanguage: (json['resolvedLanguage'] ?? '').toString().trim(),
+    );
+  }
+}
+
 class WalletKeeperSyncBundle {
   const WalletKeeperSyncBundle({
     required this.entries,
@@ -2003,6 +2286,9 @@ class WalletKeeperSyncBundle {
   final List<WalletKeeperMemo> memos;
   final List<WalletKeeperBudgetSetting> budgets;
   final WalletKeeperSmsSettings smsSettings;
+
+  bool get hasMeaningfulData =>
+      entries.isNotEmpty || memos.isNotEmpty || budgets.isNotEmpty;
 
   Map<String, dynamic> toJson() => {
     'entries': entries.map((entry) => entry.toJson()).toList(),
@@ -2119,6 +2405,10 @@ class WalletKeeperAccountRepository {
     return WalletKeeperUserSession.fromJson(
       (jsonDecode(raw) as Map).cast<String, dynamic>(),
     );
+  }
+
+  Future<WalletKeeperUserSession> loadOrBootstrapSession() async {
+    return await loadSession() ?? await bootstrapGuest();
   }
 
   Future<void> saveSession(WalletKeeperUserSession session) async {
@@ -2284,6 +2574,124 @@ class WalletKeeperAccountRepository {
     await saveSession(linked);
     return linked;
   }
+
+  Future<WalletKeeperUserSession> signOutToGuest() async {
+    try {
+      await _googleSignIn.signOut();
+    } catch (_) {}
+    try {
+      await _firebaseAuth.signOut();
+    } catch (_) {}
+    try {
+      await UserApi.instance.logout();
+    } catch (_) {}
+    try {
+      await NaverLoginSDK.logout();
+    } catch (_) {}
+    return bootstrapGuest();
+  }
+}
+
+class WalletKeeperPushRepository {
+  static const _baseUrl = _walletKeeperAuthBaseUri;
+
+  final WalletKeeperAccountRepository _accountRepository = WalletKeeperAccountRepository();
+
+  Future<void> registerCurrentDeviceToken() async {
+    if (!(Platform.isAndroid || Platform.isIOS)) return;
+
+    final session = await _accountRepository.loadOrBootstrapSession();
+    final deviceInfo = await _accountRepository.getDeviceInfo();
+    final package = await PackageInfo.fromPlatform();
+    final messaging = FirebaseMessaging.instance;
+
+    if (Platform.isIOS) {
+      await messaging.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+      await messaging.setForegroundNotificationPresentationOptions(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+    } else if (Platform.isAndroid) {
+      await messaging.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+    }
+
+    final token = await messaging.getToken();
+    if (token == null || token.trim().isEmpty) return;
+
+    await http.post(
+      Uri.parse('$_baseUrl/fcm/register'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ${session.token}',
+      },
+      body: jsonEncode({
+        'fcmToken': token,
+        'platform': Platform.isIOS ? 'ios' : 'android',
+        'appVersion': '${package.version}+${package.buildNumber}',
+        'deviceInfo': {
+          ...deviceInfo,
+          'deviceModel': deviceInfo['model'] ?? '',
+          'osVersion': deviceInfo['version'] ?? deviceInfo['systemVersion'] ?? '',
+        },
+      }),
+    );
+  }
+}
+
+class WalletKeeperVersionRepository {
+  static const _baseUrl = _walletKeeperAuthBaseUri;
+
+  Future<WalletKeeperVersionCheckResult?> checkCurrentVersion() async {
+    final package = await PackageInfo.fromPlatform();
+    final currentVersion = '${package.version}+${package.buildNumber}';
+    final lang = Platform.localeName;
+    final uri = Uri.parse('$_baseUrl/app-version/check').replace(
+      queryParameters: {
+        'currentVersion': currentVersion,
+        'platform': Platform.isIOS ? 'ios' : 'android',
+        'lang': lang,
+      },
+    );
+    final response = await http.get(uri);
+    final payload = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    if (response.statusCode != 200 || payload['success'] != true) {
+      return null;
+    }
+    final data = (payload['data'] as Map?)?.cast<String, dynamic>() ?? const {};
+    return WalletKeeperVersionCheckResult.fromJson(data);
+  }
+}
+
+class WalletKeeperPolicyRepository {
+  static const _baseUrl = _walletKeeperAuthBaseUri;
+
+  Future<WalletKeeperPolicyDocument> fetchPolicy({
+    required String type,
+    required String localeTag,
+  }) async {
+    final uri = Uri.parse('$_baseUrl/policies').replace(
+      queryParameters: {
+        'type': type,
+        'lang': localeTag,
+      },
+    );
+    final response = await http.get(uri);
+    final payload = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    if (response.statusCode != 200 || payload['success'] != true) {
+      throw Exception(payload['message'] ?? '정책 문서를 불러오지 못했습니다.');
+    }
+    final data = (payload['data'] as Map?)?.cast<String, dynamic>() ?? const {};
+    return WalletKeeperPolicyDocument.fromJson(data);
+  }
 }
 
 class WalletKeeperCloudSyncRepository {
@@ -2292,7 +2700,15 @@ class WalletKeeperCloudSyncRepository {
   final WalletKeeperAccountRepository _accountRepository = WalletKeeperAccountRepository();
 
   Future<WalletKeeperSyncBundle?> loadRemote() async {
-    final session = await _accountRepository.loadSession() ?? await _accountRepository.bootstrapGuest();
+    final session =
+        await _accountRepository.loadSession() ??
+        await _accountRepository.bootstrapGuest();
+    return loadRemoteForSession(session);
+  }
+
+  Future<WalletKeeperSyncBundle?> loadRemoteForSession(
+    WalletKeeperUserSession session,
+  ) async {
     final response = await http.get(
       Uri.parse('$_baseUrl/save'),
       headers: {
@@ -2315,7 +2731,25 @@ class WalletKeeperCloudSyncRepository {
     required List<WalletKeeperBudgetSetting> budgets,
     required WalletKeeperSmsSettings smsSettings,
   }) async {
-    final session = await _accountRepository.loadSession() ?? await _accountRepository.bootstrapGuest();
+    final session =
+        await _accountRepository.loadSession() ??
+        await _accountRepository.bootstrapGuest();
+    await syncForSession(
+      session: session,
+      entries: entries,
+      memos: memos,
+      budgets: budgets,
+      smsSettings: smsSettings,
+    );
+  }
+
+  Future<void> syncForSession({
+    required WalletKeeperUserSession session,
+    required List<LedgerEntry> entries,
+    required List<WalletKeeperMemo> memos,
+    required List<WalletKeeperBudgetSetting> budgets,
+    required WalletKeeperSmsSettings smsSettings,
+  }) async {
     final deviceInfo = await _accountRepository.getDeviceInfo();
     final response = await http.post(
       Uri.parse('$_baseUrl/save'),

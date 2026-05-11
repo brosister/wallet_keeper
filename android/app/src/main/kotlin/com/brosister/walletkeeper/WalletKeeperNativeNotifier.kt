@@ -13,6 +13,15 @@ object WalletKeeperNativeNotifier {
     private const val CHANNEL_ID = "wallet_keeper_sms_channel"
     private const val CHANNEL_NAME = "지갑지켜 문자 알림"
     private const val OPEN_SMS_INBOX_ACTION = "com.brosister.walletkeeper.OPEN_SMS_INBOX"
+    private const val FLUTTER_PREFS_NAME = "FlutterSharedPreferences"
+    private const val SHOW_NOTIFICATION_PREF_KEY =
+        "flutter.wallet_keeper_sms_show_notification_v1"
+
+    fun shouldShowFinancialNotification(context: Context): Boolean {
+        return context
+            .getSharedPreferences(FLUTTER_PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(SHOW_NOTIFICATION_PREF_KEY, true)
+    }
 
     fun showFinancialNotification(
         context: Context,

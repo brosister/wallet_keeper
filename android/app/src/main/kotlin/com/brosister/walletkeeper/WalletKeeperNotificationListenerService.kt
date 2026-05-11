@@ -14,13 +14,15 @@ class WalletKeeperNotificationListenerService : NotificationListenerService() {
             return
         }
         WalletKeeperNotificationReader.storePendingNotification(this, payload)
-        WalletKeeperNativeNotifier.showFinancialNotification(
-            context = this,
-            notificationId = notificationId.hashCode(),
-            title = payload["title"] as? String ?: "지갑지켜",
-            amountText = payload["amountText"] as? String ?: "",
-            timestampMillis = payload["dateMillis"] as? Long ?: System.currentTimeMillis(),
-        )
+        if (WalletKeeperNativeNotifier.shouldShowFinancialNotification(this)) {
+            WalletKeeperNativeNotifier.showFinancialNotification(
+                context = this,
+                notificationId = notificationId.hashCode(),
+                title = payload["title"] as? String ?: "지갑지켜",
+                amountText = payload["amountText"] as? String ?: "",
+                timestampMillis = payload["dateMillis"] as? Long ?: System.currentTimeMillis(),
+            )
+        }
     }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification?) {

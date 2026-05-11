@@ -8,6 +8,7 @@ import 'package:another_telephony/telephony.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/services.dart';
@@ -20,10 +21,12 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:kakao_flutter_sdk/kakao_flutter_sdk.dart';
 import 'package:naver_login_sdk/naver_login_sdk.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 
 part 'src/ledger_home_page.dart';
@@ -39,7 +42,6 @@ const _walletKeeperBottomNavSectionHeight = 112.0;
 const _walletKeeperAdSettingsUri = 'https://app-master.officialsite.kr/api/wallet-keeper/ad-settings';
 const _walletKeeperSmsReportUri = 'https://app-master.officialsite.kr/api/wallet-keeper/sms-reports';
 const _walletKeeperAuthBaseUri = 'https://app-master.officialsite.kr/api/wallet-keeper';
-const _walletKeeperPrivacyUri = 'https://app-master.officialsite.kr/privacy/wallet_keeper';
 const _smsOnboardingSeenKey = 'wallet_keeper_sms_onboarding_seen_v1';
 const _smsPermissionGrantedKey = 'wallet_keeper_sms_permission_granted_v1';
 const _notificationPermissionGrantedKey = 'wallet_keeper_notification_permission_granted_v1';
@@ -341,10 +343,22 @@ class WalletKeeperStartupShell extends StatefulWidget {
   State<WalletKeeperStartupShell> createState() => _WalletKeeperStartupShellState();
 }
 
+class _WalletKeeperStartupBundle {
+  const _WalletKeeperStartupBundle({
+    required this.featureAccess,
+    required this.versionCheck,
+  });
+
+  final WalletKeeperFeatureAccess featureAccess;
+  final WalletKeeperVersionCheckResult? versionCheck;
+}
+
 class _WalletKeeperStartupShellState extends State<WalletKeeperStartupShell> {
   final WalletKeeperSettingsRepository _settingsRepository =
       WalletKeeperSettingsRepository();
-  late final Future<WalletKeeperFeatureAccess> _startupFuture;
+  final WalletKeeperVersionRepository _versionRepository =
+      WalletKeeperVersionRepository();
+  late final Future<_WalletKeeperStartupBundle> _startupFuture;
 
   @override
   void initState() {
@@ -352,27 +366,38 @@ class _WalletKeeperStartupShellState extends State<WalletKeeperStartupShell> {
     _startupFuture = _initializeStartup();
   }
 
-  Future<WalletKeeperFeatureAccess> _initializeStartup() async {
+  Future<_WalletKeeperStartupBundle> _initializeStartup() async {
     _walletKeeperAdSettingsCache = await _fetchWalletKeeperAdSettings();
     if (Platform.isAndroid || Platform.isIOS) {
       await MobileAds.instance.initialize();
     }
-    return _settingsRepository.loadFeatureAccess();
+    final featureAccess = await _settingsRepository.loadFeatureAccess();
+    WalletKeeperVersionCheckResult? versionCheck;
+    try {
+      versionCheck = await _versionRepository.checkCurrentVersion();
+    } catch (_) {}
+    return _WalletKeeperStartupBundle(
+      featureAccess: featureAccess,
+      versionCheck: versionCheck,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<WalletKeeperFeatureAccess>(
+    return FutureBuilder<_WalletKeeperStartupBundle>(
       future: _startupFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
           return const WalletKeeperCustomSplashScreen();
         }
-        final featureAccess = snapshot.data;
-        if (featureAccess == null) {
+        final bundle = snapshot.data;
+        if (bundle == null) {
           return const WalletKeeperCustomSplashScreen();
         }
-        return WalletKeeperBootstrap(initialFeatureAccess: featureAccess);
+        return WalletKeeperBootstrap(
+          initialFeatureAccess: bundle.featureAccess,
+          versionCheck: bundle.versionCheck,
+        );
       },
     );
   }
@@ -417,9 +442,11 @@ class WalletKeeperBootstrap extends StatefulWidget {
   const WalletKeeperBootstrap({
     super.key,
     required this.initialFeatureAccess,
+    required this.versionCheck,
   });
 
   final WalletKeeperFeatureAccess initialFeatureAccess;
+  final WalletKeeperVersionCheckResult? versionCheck;
 
   @override
   State<WalletKeeperBootstrap> createState() => _WalletKeeperBootstrapState();
@@ -430,11 +457,84 @@ class _WalletKeeperBootstrapState extends State<WalletKeeperBootstrap> {
       WalletKeeperSettingsRepository();
   late WalletKeeperFeatureAccess _featureAccess;
   bool _requestingPermissions = false;
+  bool _versionNoticeShown = false;
 
   @override
   void initState() {
     super.initState();
     _featureAccess = widget.initialFeatureAccess;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _showVersionNoticeIfNeeded();
+    });
+  }
+
+  Future<void> _showVersionNoticeIfNeeded() async {
+    if (!mounted || _versionNoticeShown) return;
+    final versionCheck = widget.versionCheck;
+    if (versionCheck == null || !versionCheck.shouldUpdate) return;
+    _versionNoticeShown = true;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: !versionCheck.forceUpdate,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+          title: Text(
+            versionCheck.title,
+            style: const TextStyle(
+              fontFamily: 'Pretendard',
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF172033),
+            ),
+          ),
+          content: Text(
+            versionCheck.message,
+            style: const TextStyle(
+              fontFamily: 'Pretendard',
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: Color(0xFF5E6B85),
+              height: 1.5,
+            ),
+          ),
+          actions: [
+            if (!versionCheck.forceUpdate)
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('나중에'),
+              ),
+            FilledButton(
+              onPressed: () async {
+                final storeUrl = versionCheck.storeUrl.trim().isNotEmpty
+                    ? versionCheck.storeUrl.trim()
+                    : (Platform.isIOS
+                        ? versionCheck.iosStoreUrl.trim()
+                        : versionCheck.androidStoreUrl.trim());
+                if (storeUrl.isNotEmpty) {
+                  final uri = Uri.tryParse(storeUrl);
+                  if (uri != null) {
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  }
+                }
+                if (!versionCheck.forceUpdate && context.mounted) {
+                  Navigator.of(context).pop();
+                }
+              },
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFE76158),
+                foregroundColor: Colors.white,
+              ),
+              child: Text(versionCheck.forceUpdate ? '업데이트' : '지금 업데이트'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Future<void> _agreeAndRequestPermissions() async {

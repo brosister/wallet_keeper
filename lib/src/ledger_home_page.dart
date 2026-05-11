@@ -4,43 +4,79 @@ enum _ShellRouteKind {
   root,
   smsInbox,
   smsSettings,
-  settingsData,
-  settingsPrivacy,
+  settingsProfile,
+  settingsInquiryList,
+  settingsInquiryDetail,
+  settingsInquiryCompose,
+  settingsTerms,
+  assetUpcomingHistory,
   assetFlowHistory,
   editor,
+}
+
+enum _WalletKeeperCloudConflictAction {
+  startFresh,
+  loadRemote,
 }
 
 class _ShellRoute {
   const _ShellRoute.root()
       : kind = _ShellRouteKind.root,
         existing = null,
-        smsDraft = null;
+        smsDraft = null,
+        inquiry = null;
   const _ShellRoute.smsInbox()
       : kind = _ShellRouteKind.smsInbox,
         existing = null,
-        smsDraft = null;
+        smsDraft = null,
+        inquiry = null;
   const _ShellRoute.smsSettings()
       : kind = _ShellRouteKind.smsSettings,
         existing = null,
-        smsDraft = null;
-  const _ShellRoute.settingsData()
-      : kind = _ShellRouteKind.settingsData,
+        smsDraft = null,
+        inquiry = null;
+  const _ShellRoute.settingsProfile()
+      : kind = _ShellRouteKind.settingsProfile,
+        existing = null,
+        smsDraft = null,
+        inquiry = null;
+  const _ShellRoute.settingsInquiryList()
+      : kind = _ShellRouteKind.settingsInquiryList,
+        existing = null,
+        smsDraft = null,
+        inquiry = null;
+  const _ShellRoute.settingsInquiryDetail({required this.inquiry})
+      : kind = _ShellRouteKind.settingsInquiryDetail,
         existing = null,
         smsDraft = null;
-  const _ShellRoute.settingsPrivacy()
-      : kind = _ShellRouteKind.settingsPrivacy,
+  const _ShellRoute.settingsInquiryCompose()
+      : kind = _ShellRouteKind.settingsInquiryCompose,
         existing = null,
-        smsDraft = null;
+        smsDraft = null,
+        inquiry = null;
+  const _ShellRoute.settingsTerms()
+      : kind = _ShellRouteKind.settingsTerms,
+        existing = null,
+        smsDraft = null,
+        inquiry = null;
+  const _ShellRoute.assetUpcomingHistory()
+      : kind = _ShellRouteKind.assetUpcomingHistory,
+        existing = null,
+        smsDraft = null,
+        inquiry = null;
   const _ShellRoute.assetFlowHistory()
       : kind = _ShellRouteKind.assetFlowHistory,
         existing = null,
-        smsDraft = null;
+        smsDraft = null,
+        inquiry = null;
   const _ShellRoute.editor({this.existing, this.smsDraft})
-      : kind = _ShellRouteKind.editor;
+      : kind = _ShellRouteKind.editor,
+        inquiry = null;
 
   final _ShellRouteKind kind;
   final LedgerEntry? existing;
   final WalletKeeperSmsDraft? smsDraft;
+  final WalletKeeperInquiry? inquiry;
 }
 
 class LedgerHomePage extends StatefulWidget {
@@ -71,12 +107,16 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
   final WalletKeeperMemoRepository _memoRepository = WalletKeeperMemoRepository();
   final WalletKeeperBudgetRepository _budgetRepository =
       WalletKeeperBudgetRepository();
+  final WalletKeeperInquiryRepository _inquiryRepository =
+      WalletKeeperInquiryRepository();
   final WalletKeeperAccountRepository _accountRepository = WalletKeeperAccountRepository();
   final WalletKeeperCloudSyncRepository _cloudSyncRepository = WalletKeeperCloudSyncRepository();
+  final WalletKeeperPushRepository _pushRepository = WalletKeeperPushRepository();
 
   List<LedgerEntry> _entries = const [];
   List<WalletKeeperMemo> _memos = const [];
   List<WalletKeeperBudgetSetting> _budgets = const [];
+  List<WalletKeeperInquiry> _inquiries = const [];
   List<WalletKeeperSmsDraft> _smsDrafts = const [];
   WalletKeeperUserSession? _session;
   WalletKeeperSmsSettings _smsSettings = const WalletKeeperSmsSettings(
@@ -91,11 +131,28 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
   int _selectedTab = 0;
   bool _smsListenerAttached = false;
   bool _financialAppNotificationEnabled = false;
+  int _selectedOverviewTab = 0;
+  int _overviewResetNonce = 0;
   final List<_ShellRoute> _routeStack = [const _ShellRoute.root()];
   final GlobalKey<_EntryEditorPageState> _editorPageKey = GlobalKey<_EntryEditorPageState>();
+  final GlobalKey<_InquiryComposePageState> _inquiryComposePageKey =
+      GlobalKey<_InquiryComposePageState>();
   DateTime? _lastBackPressedAt;
 
-  _ShellRoute get _currentRoute => _routeStack.last;
+  _ShellRoute get _currentRoute =>
+      _routeStack.isEmpty ? const _ShellRoute.root() : _routeStack.last;
+
+  List<String> get _categorySuggestions {
+    final values = <String>{};
+    for (final entry in _entries) {
+      final trimmed = entry.category.trim();
+      if (trimmed.isNotEmpty) {
+        values.add(trimmed);
+      }
+    }
+    final list = values.toList()..sort();
+    return list;
+  }
 
   @override
   void initState() {
@@ -154,11 +211,13 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
         await _notificationAccessRepository.isFinancialAppNotificationEnabled();
     final session = await _accountRepository.bootstrapGuest();
     final remoteBundle = await _cloudSyncRepository.loadRemote();
+    final loadedInquiries = await _loadInquiriesForSession(session);
     if (!mounted) return;
     setState(() {
       _entries = remoteBundle != null && loadedEntries.isEmpty ? remoteBundle.entries : loadedEntries;
       _memos = remoteBundle != null && loadedMemos.isEmpty ? remoteBundle.memos : loadedMemos;
       _budgets = remoteBundle != null && loadedBudgets.isEmpty ? remoteBundle.budgets : loadedBudgets;
+      _inquiries = loadedInquiries;
       _smsDrafts = loadedDrafts;
       _smsSettings = remoteBundle?.smsSettings ?? loadedSettings;
       _financialAppNotificationEnabled = financialNotificationEnabled;
@@ -176,9 +235,19 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
     if (remoteBundle != null) {
       await _smsSettingsRepository.save(remoteBundle.smsSettings);
     }
+    unawaited(_registerPushTokenSilently());
     _startPendingMmsTimerIfNeeded();
     await _consumePendingRealtimeMessages();
     await _consumeLaunchRoute();
+  }
+
+  Future<void> _registerPushTokenSilently() async {
+    try {
+      await _pushRepository.registerCurrentDeviceToken();
+    } catch (error, stackTrace) {
+      debugPrint('Wallet Keeper FCM register failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
   }
 
   Future<void> _refreshFinancialAppNotificationAccess() async {
@@ -214,6 +283,135 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
     } catch (_) {}
   }
 
+  WalletKeeperSyncBundle _currentLocalBundle() {
+    return WalletKeeperSyncBundle(
+      entries: _entries,
+      memos: _memos,
+      budgets: _budgets,
+      smsSettings: _smsSettings,
+    );
+  }
+
+  Future<void> _applyRemoteBundle(
+    WalletKeeperUserSession session,
+    WalletKeeperSyncBundle bundle,
+    List<WalletKeeperInquiry> inquiries,
+  ) async {
+    final sortedEntries = [...bundle.entries]
+      ..sort((a, b) => b.date.compareTo(a.date));
+    final sortedBudgets = [...bundle.budgets]
+      ..sort((a, b) {
+        final monthCompare = b.monthKey.compareTo(a.monthKey);
+        if (monthCompare != 0) return monthCompare;
+        return a.category.compareTo(b.category);
+      });
+    await _repository.save(sortedEntries);
+    await _memoRepository.save(bundle.memos);
+    await _budgetRepository.save(sortedBudgets);
+    await _smsSettingsRepository.save(bundle.smsSettings);
+    if (!mounted) return;
+    setState(() {
+      _session = session;
+      _inquiries = inquiries;
+      _entries = sortedEntries;
+      _memos = bundle.memos;
+      _budgets = sortedBudgets;
+      _smsSettings = bundle.smsSettings;
+    });
+  }
+
+  Future<void> _preserveLocalAndSyncToSession(
+    WalletKeeperUserSession session,
+    List<WalletKeeperInquiry> inquiries,
+  ) async {
+    final localBundle = _currentLocalBundle();
+    await _cloudSyncRepository.syncForSession(
+      session: session,
+      entries: localBundle.entries,
+      memos: localBundle.memos,
+      budgets: localBundle.budgets,
+      smsSettings: localBundle.smsSettings,
+    );
+    if (!mounted) return;
+    setState(() {
+      _session = session;
+      _inquiries = inquiries;
+    });
+  }
+
+  Future<_WalletKeeperCloudConflictAction> _showCloudConflictDialog() async {
+    final action = await showDialog<_WalletKeeperCloudConflictAction>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return PopScope(
+          canPop: false,
+          child: AlertDialog(
+            backgroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(24),
+            ),
+            title: const Text('서버에 이미 저장된 데이터가 있어요!'),
+            content: const Text(
+              '이 계정에는 다른 기기에서 저장한 데이터가 있습니다. 새로 작성하거나 서버 데이터를 불러올 수 있습니다.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(
+                  context,
+                ).pop(_WalletKeeperCloudConflictAction.startFresh),
+                child: const Text('새로작성'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(
+                  context,
+                ).pop(_WalletKeeperCloudConflictAction.loadRemote),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFFFF6A5F),
+                ),
+                child: const Text('불러오기'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    return action ?? _WalletKeeperCloudConflictAction.loadRemote;
+  }
+
+  Future<bool> _showStartFreshWarningDialog() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          title: const Text('새로작성'),
+          content: const Text(
+            '새로작성하면 이미 저장된 데이터가 소멸되는데도 새로작성할까요?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('취소'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFFF6A5F),
+              ),
+              child: const Text('새로작성'),
+            ),
+          ],
+        );
+      },
+    );
+    return confirmed == true;
+  }
+
   Future<void> _saveEntry(
     LedgerEntry entry, {
     String? consumedDraftId,
@@ -245,7 +443,7 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
     await showAppToast('내역을 저장했습니다.');
   }
 
-  Future<void> _deleteEntry(LedgerEntry entry) async {
+  Future<bool> _deleteEntry(LedgerEntry entry) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) {
@@ -270,14 +468,15 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
         );
       },
     );
-    if (confirmed != true) return;
+    if (confirmed != true) return false;
     final next = _entries.where((item) => item.id != entry.id).toList()
       ..sort((a, b) => b.date.compareTo(a.date));
     await _repository.save(next);
-    if (!mounted) return;
+    if (!mounted) return false;
     setState(() => _entries = next);
     await _syncCloud();
     await showAppToast('내역을 삭제했습니다.');
+    return true;
   }
 
   Future<void> _saveBudgetsForMonth(
@@ -299,29 +498,107 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
     await showAppToast('예산을 저장했습니다.');
   }
 
-  Future<void> _runGuarded(
+  Future<void> _saveInquiry({
+    required String title,
+    required String content,
+    required String replyEmail,
+  }) async {
+    if (_session == null) {
+      await showAppToast('계정 정보를 확인할 수 없습니다.');
+      return;
+    }
+    await _inquiryRepository.submit(
+      session: _session!,
+      title: title,
+      content: content,
+      replyEmail: replyEmail,
+    );
+    final next = await _loadInquiriesForSession(_session!);
+    if (!mounted) return;
+    setState(() {
+      _inquiries = next;
+      if (_currentRoute.kind == _ShellRouteKind.settingsInquiryCompose) {
+        _routeStack.removeLast();
+      }
+    });
+    await showAppToast('문의를 등록했습니다.');
+  }
+
+  Future<void> _runSocialSignIn(
     Future<WalletKeeperUserSession> Function() action,
     String successMessage,
   ) async {
     try {
+      final previousSession = _session ?? await _accountRepository.loadSession();
       final session = await action();
+      final inquiries = await _loadInquiriesForSession(session);
+      final switchedUser =
+          previousSession != null && previousSession.userId != session.userId;
+      final remoteBundle = await _cloudSyncRepository.loadRemoteForSession(session);
+      final remoteHasData = remoteBundle?.hasMeaningfulData == true;
+      if (switchedUser && remoteHasData) {
+        while (true) {
+          final conflictAction = await _showCloudConflictDialog();
+          if (conflictAction == _WalletKeeperCloudConflictAction.loadRemote) {
+            await _applyRemoteBundle(session, remoteBundle!, inquiries);
+            break;
+          }
+          final confirmed = await _showStartFreshWarningDialog();
+          if (!confirmed) {
+            continue;
+          }
+          await _preserveLocalAndSyncToSession(session, inquiries);
+          break;
+        }
+      } else {
+        await _preserveLocalAndSyncToSession(session, inquiries);
+      }
       if (!mounted) return;
-      setState(() => _session = session);
-      await _syncCloud();
+      unawaited(_registerPushTokenSilently());
       await showAppToast(successMessage);
     } catch (error) {
       await showAppToast(error.toString().replaceFirst('Exception: ', ''));
     }
   }
 
-  Future<void> _syncCloudManually() async {
+  Future<void> _logoutToGuest() async {
     try {
-      await _syncCloud();
-      await showAppToast('서버 동기화를 완료했습니다.');
+      final session = await _accountRepository.signOutToGuest();
+      final inquiries = await _loadInquiriesForSession(session);
+      await _preserveLocalAndSyncToSession(session, inquiries);
+      unawaited(_registerPushTokenSilently());
+      await showAppToast('로그아웃되었습니다.');
     } catch (error) {
-      await showAppToast('서버 동기화에 실패했습니다.');
+      await showAppToast(error.toString().replaceFirst('Exception: ', ''));
     }
   }
+
+  Future<List<WalletKeeperInquiry>> _loadInquiriesForSession(
+    WalletKeeperUserSession? session, {
+    bool showErrorToast = false,
+  }) async {
+    if (session == null) return const [];
+    try {
+      return await _inquiryRepository.fetchList(session);
+    } catch (error) {
+      if (showErrorToast) {
+        await showAppToast(
+          error.toString().replaceFirst('Exception: ', ''),
+        );
+      }
+      return const [];
+    }
+  }
+
+  Future<void> _refreshInquiries({bool showErrorToast = false}) async {
+    final next = await _loadInquiriesForSession(
+      _session,
+      showErrorToast: showErrorToast,
+    );
+    if (!mounted) return;
+    setState(() => _inquiries = next);
+  }
+
 
   void _popToSmsInboxOrRoot() {
     if (_routeStack.length > 1 && _routeStack[_routeStack.length - 2].kind == _ShellRouteKind.smsInbox) {
@@ -384,9 +661,17 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
                   child: EntryEditorPage(
                     key: editorKey,
                     existing: existing,
+                    categorySuggestions: _categorySuggestions,
                     featureAccess: widget.featureAccess,
                     onRequestSmsAccess: widget.onRequestFeatureAccess,
                     onCancel: () => attemptClose(sheetContext),
+                    onDeleteEntry: existing == null
+                        ? null
+                        : () async {
+                            final deleted = await _deleteEntry(existing);
+                            if (!deleted || !sheetContext.mounted) return;
+                            Navigator.of(sheetContext).pop();
+                          },
                     onSave: (entry) async {
                       await _saveEntry(
                         entry,
@@ -491,6 +776,29 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
       consumedDraftId: draft.id,
       stayOnCurrentRoute: true,
     );
+  }
+
+  Future<void> _pasteSmsFromClipboard() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final body = data?.text?.trim() ?? '';
+    if (body.isEmpty) {
+      await showAppToast('금융문자가 아닌것같아요!');
+      return;
+    }
+    final parsed = WalletKeeperSmsParser.parseRawMessage(
+      body: body,
+      sender: 'clipboard',
+      dateMillis: DateTime.now().millisecondsSinceEpoch,
+      sourceType: 'sms',
+    );
+    if (parsed == null) {
+      await showAppToast('금융문자가 아닌것같아요!');
+      return;
+    }
+    final merged = await _smsAutomationRepository.saveInboxDrafts([parsed.toDraft()]);
+    if (!mounted) return;
+    setState(() => _smsDrafts = merged);
+    await showAppToast('문자함에 추가했습니다.');
   }
 
   Future<void> _saveSmsSettings(WalletKeeperSmsSettings settings) async {
@@ -637,24 +945,68 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
       final canLeave = await _editorPageKey.currentState?.confirmDiscardIfNeeded() ?? true;
       if (!canLeave) return false;
     }
+    if (_currentRoute.kind == _ShellRouteKind.settingsInquiryCompose) {
+      final canLeave =
+          await _inquiryComposePageKey.currentState?.confirmDiscardIfNeeded() ??
+              true;
+      if (!canLeave) return false;
+    }
     setState(() => _routeStack.removeLast());
     return false;
   }
 
   Future<void> _closeEditorAndSelectTab(int index) async {
+    final shouldResetOverview = index == 0 && _selectedTab == 0;
     if (_currentRoute.kind == _ShellRouteKind.editor) {
       final canLeave = await _editorPageKey.currentState?.confirmDiscardIfNeeded() ?? true;
       if (!canLeave) return;
       if (!mounted) return;
       setState(() {
         if (_routeStack.isNotEmpty) {
-          _routeStack.removeLast();
+          _routeStack
+            ..clear()
+            ..add(const _ShellRoute.root());
         }
         _selectedTab = index;
+        if (shouldResetOverview) {
+          _selectedOverviewTab = 0;
+          _overviewResetNonce++;
+        }
       });
       return;
     }
-    setState(() => _selectedTab = index);
+    if (_currentRoute.kind == _ShellRouteKind.settingsInquiryCompose) {
+      final canLeave =
+          await _inquiryComposePageKey.currentState?.confirmDiscardIfNeeded() ??
+              true;
+      if (!canLeave) return;
+      if (!mounted) return;
+      setState(() {
+        if (_routeStack.isNotEmpty) {
+          _routeStack
+            ..clear()
+            ..add(const _ShellRoute.root());
+        }
+        _selectedTab = index;
+        if (shouldResetOverview) {
+          _selectedOverviewTab = 0;
+          _overviewResetNonce++;
+        }
+      });
+      return;
+    }
+    setState(() {
+      if (_routeStack.isNotEmpty) {
+        _routeStack
+          ..clear()
+          ..add(const _ShellRoute.root());
+      }
+      _selectedTab = index;
+      if (shouldResetOverview) {
+        _selectedOverviewTab = 0;
+        _overviewResetNonce++;
+      }
+    });
   }
 
   @override
@@ -662,7 +1014,16 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
     final summary = LedgerSummary.fromEntries(_entries);
     final showBottomBar =
         _currentRoute.kind == _ShellRouteKind.root ||
-        _currentRoute.kind == _ShellRouteKind.editor;
+        _currentRoute.kind == _ShellRouteKind.smsInbox ||
+        _currentRoute.kind == _ShellRouteKind.editor ||
+        _currentRoute.kind == _ShellRouteKind.smsSettings ||
+        _currentRoute.kind == _ShellRouteKind.settingsProfile ||
+        _currentRoute.kind == _ShellRouteKind.settingsInquiryList ||
+        _currentRoute.kind == _ShellRouteKind.settingsInquiryDetail ||
+        _currentRoute.kind == _ShellRouteKind.settingsInquiryCompose ||
+        _currentRoute.kind == _ShellRouteKind.settingsTerms ||
+        _currentRoute.kind == _ShellRouteKind.assetUpcomingHistory ||
+        _currentRoute.kind == _ShellRouteKind.assetFlowHistory;
     final bottomOverlayHeight = showBottomBar
         ? _walletKeeperBottomNavSectionHeight + MediaQuery.paddingOf(context).bottom
         : 0.0;
@@ -672,15 +1033,20 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
       case _ShellRouteKind.root:
         page = [
           OverviewPage(
+            key: ValueKey('overview-$_overviewResetNonce'),
             summary: summary,
             entries: _entries,
             budgets: _budgets,
             smsDraftCount: _smsDrafts.length,
+            selectedTab: _selectedOverviewTab,
+            onSelectedTabChanged: (index) => setState(() => _selectedOverviewTab = index),
             onEdit: ({existing}) => _showEntryEditorSheet(existing: existing),
             onOpenBudgetSettings: ({required month}) =>
                 _showBudgetSettingsSheet(month: month),
             onOpenSmsPage: _openSmsPage,
-            onDelete: _deleteEntry,
+            onDelete: (entry) async {
+              await _deleteEntry(entry);
+            },
           ),
           StatsPage(
             entries: _entries,
@@ -688,18 +1054,24 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
           AssetPage(
             entries: _entries,
             session: _session,
+            onOpenUpcomingExpenses: () => setState(() => _routeStack.add(const _ShellRoute.assetUpcomingHistory())),
             onOpenFlowHistory: () => setState(() => _routeStack.add(const _ShellRoute.assetFlowHistory())),
           ),
           SettingsPage(
             session: _session,
             smsSettings: _smsSettings,
             onOpenSmsSettings: () => setState(() => _routeStack.add(const _ShellRoute.smsSettings())),
-            onOpenDataSettings: () => setState(() => _routeStack.add(const _ShellRoute.settingsData())),
-            onOpenPrivacyInfo: () => setState(() => _routeStack.add(const _ShellRoute.settingsPrivacy())),
-            onSignInWithKakao: () => _runGuarded(_accountRepository.signInWithKakao, '카카오 연동을 완료했습니다.'),
-            onSignInWithGoogle: () => _runGuarded(_accountRepository.signInWithGoogle, '구글 연동을 완료했습니다.'),
-            onSignInWithNaver: () => _runGuarded(_accountRepository.signInWithNaver, '네이버 연동을 완료했습니다.'),
-            onSignInWithApple: () => _runGuarded(_accountRepository.signInWithApple, '애플 연동을 완료했습니다.'),
+            onOpenProfileInfo: () => setState(() => _routeStack.add(const _ShellRoute.settingsProfile())),
+            onOpenInquiryList: () {
+              _refreshInquiries();
+              setState(() => _routeStack.add(const _ShellRoute.settingsInquiryList()));
+            },
+            onOpenTermsInfo: () => setState(() => _routeStack.add(const _ShellRoute.settingsTerms())),
+            onLogout: _logoutToGuest,
+            onSignInWithKakao: () => _runSocialSignIn(_accountRepository.signInWithKakao, '로그인되었습니다.'),
+            onSignInWithGoogle: () => _runSocialSignIn(_accountRepository.signInWithGoogle, '로그인되었습니다.'),
+            onSignInWithNaver: () => _runSocialSignIn(_accountRepository.signInWithNaver, '로그인되었습니다.'),
+            onSignInWithApple: () => _runSocialSignIn(_accountRepository.signInWithApple, '로그인되었습니다.'),
           ),
         ][_selectedTab];
         break;
@@ -715,6 +1087,7 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
           onRequestSmsAccess: widget.onRequestFeatureAccess,
           onQuickAutoInput: _quickAutoInputDraft,
           onDeleteSelected: _deleteSelectedSmsDrafts,
+          onPasteFromClipboard: _pasteSmsFromClipboard,
         );
         break;
       case _ShellRouteKind.smsSettings:
@@ -728,15 +1101,51 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
           onChanged: _saveSmsSettings,
         );
         break;
-      case _ShellRouteKind.settingsData:
-        page = DataSettingsPage(
+      case _ShellRouteKind.settingsProfile:
+        page = ProfileInfoPage(
           session: _session,
           onBack: () => setState(() => _routeStack.removeLast()),
-          onSyncNow: _syncCloudManually,
         );
         break;
-      case _ShellRouteKind.settingsPrivacy:
-        page = PrivacyInfoPage(
+      case _ShellRouteKind.settingsInquiryList:
+        page = InquiryListPage(
+          inquiries: _inquiries,
+          onBack: () => setState(() => _routeStack.removeLast()),
+          onRefresh: () => _refreshInquiries(showErrorToast: true),
+          onOpenDetail: (inquiry) =>
+              setState(() => _routeStack.add(_ShellRoute.settingsInquiryDetail(inquiry: inquiry))),
+          onOpenCompose: () =>
+              setState(() => _routeStack.add(const _ShellRoute.settingsInquiryCompose())),
+        );
+        break;
+      case _ShellRouteKind.settingsInquiryDetail:
+        page = InquiryDetailPage(
+          inquiry: _currentRoute.inquiry!,
+          onBack: () => setState(() => _routeStack.removeLast()),
+        );
+        break;
+      case _ShellRouteKind.settingsInquiryCompose:
+        page = InquiryComposePage(
+          key: _inquiryComposePageKey,
+          session: _session,
+          onBack: () async {
+            final canLeave =
+                await _inquiryComposePageKey.currentState?.confirmDiscardIfNeeded() ??
+                    true;
+            if (!canLeave || !mounted) return;
+            setState(() => _routeStack.removeLast());
+          },
+          onSave: _saveInquiry,
+        );
+        break;
+      case _ShellRouteKind.settingsTerms:
+        page = TermsInfoPage(
+          onBack: () => setState(() => _routeStack.removeLast()),
+        );
+        break;
+      case _ShellRouteKind.assetUpcomingHistory:
+        page = AssetUpcomingExpensesPage(
+          entries: _entries,
           onBack: () => setState(() => _routeStack.removeLast()),
         );
         break;
@@ -751,6 +1160,7 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
           key: _editorPageKey,
           existing: _currentRoute.existing,
           smsDraft: _currentRoute.smsDraft,
+          categorySuggestions: _categorySuggestions,
           featureAccess: widget.featureAccess,
           onRequestSmsAccess: widget.onRequestFeatureAccess,
           onCancel: () async {
@@ -763,6 +1173,13 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
               : () async {
                   await _removeSmsDraft(_currentRoute.smsDraft!.id);
                   if (!mounted) return;
+                  setState(() => _routeStack.removeLast());
+                },
+          onDeleteEntry: _currentRoute.existing == null
+              ? null
+              : () async {
+                  final deleted = await _deleteEntry(_currentRoute.existing!);
+                  if (!deleted || !mounted) return;
                   setState(() => _routeStack.removeLast());
                 },
           onSave: (entry) => _saveEntry(

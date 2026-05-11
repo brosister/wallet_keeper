@@ -33,14 +33,16 @@ class MmsReceiver : BroadcastReceiver() {
                     }
                 }
                 val timestampMillis = (latest.first["dateMillis"] as? Long) ?: now
-                WalletKeeperNativeNotifier.showFinancialNotification(
-                    context = context,
-                    notificationId = (latest.first["id"] as? String)?.hashCode()
-                        ?: ((latest.first["body"] as? String)?.hashCode() ?: now.toInt()),
-                    title = latest.second.title,
-                    amountText = latest.second.amountText,
-                    timestampMillis = timestampMillis,
-                )
+                if (WalletKeeperNativeNotifier.shouldShowFinancialNotification(context)) {
+                    WalletKeeperNativeNotifier.showFinancialNotification(
+                        context = context,
+                        notificationId = (latest.first["id"] as? String)?.hashCode()
+                            ?: ((latest.first["body"] as? String)?.hashCode() ?: now.toInt()),
+                        title = latest.second.title,
+                        amountText = latest.second.amountText,
+                        timestampMillis = timestampMillis,
+                    )
+                }
             } finally {
                 pendingResult.finish()
             }

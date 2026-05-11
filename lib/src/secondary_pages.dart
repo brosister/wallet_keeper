@@ -346,6 +346,18 @@ class _StatsPageState extends State<StatsPage> {
     final selectedColor = _selectedKind == 0 ? const Color(0xFF6C9CFF) : const Color(0xFFFF6A5F);
     final statsPalette =
         _selectedKind == 0 ? _statsIncomePalette : _statsExpensePalette;
+    final trendPoints = _rangeMode == _StatsRangeMode.custom
+        ? const <_StatsTrendPoint>[]
+        : _buildRecentTrendPoints(
+            widget.entries,
+            type: targetType,
+            mode: _rangeMode,
+            anchorStart: _periodStart,
+          );
+    final currentPeriodAmount = trendPoints.isEmpty ? 0.0 : trendPoints.last.amount;
+    final previousPeriodAmount =
+        trendPoints.length < 2 ? 0.0 : trendPoints[trendPoints.length - 2].amount;
+    final periodDelta = currentPeriodAmount - previousPeriodAmount;
 
     return Container(
       color: const Color(0xFFF7F8FA),
@@ -356,37 +368,45 @@ class _StatsPageState extends State<StatsPage> {
             child: SafeArea(
               bottom: false,
               child: SizedBox(
-                height: 44,
+                height: 42,
                 child: Row(
                   children: [
                     Expanded(
                       child: _rangeMode == _StatsRangeMode.custom
-                          ? Row(
-                              children: [
-                                const SizedBox(width: 20),
-                                Flexible(
-                                  child: _StatsDateRangeField(
-                                    value: DateFormat('yy.MM.dd').format(_customStart),
-                                    onTap: () => _pickCustomDate(isStart: true),
+                          ? ClipRect(
+                              child: SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                physics: const BouncingScrollPhysics(),
+                                child: SizedBox(
+                                  height: 44,
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const SizedBox(width: 20),
+                                      _StatsDateRangeField(
+                                        value: DateFormat('yy.MM.dd').format(_customStart),
+                                        onTap: () => _pickCustomDate(isStart: true),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      const Center(
+                                        child: Text(
+                                          '~',
+                                          style: TextStyle(
+                                            color: Color(0xFF7B8491),
+                                            fontSize: 17,
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      _StatsDateRangeField(
+                                        value: DateFormat('yy.MM.dd').format(_customEnd),
+                                        onTap: () => _pickCustomDate(isStart: false),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                                const SizedBox(width: 4),
-                                const Text(
-                                  '~',
-                                  style: TextStyle(
-                                    color: Color(0xFF7B8491),
-                                    fontSize: 17,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                                const SizedBox(width: 4),
-                                Flexible(
-                                  child: _StatsDateRangeField(
-                                    value: DateFormat('yy.MM.dd').format(_customEnd),
-                                    onTap: () => _pickCustomDate(isStart: false),
-                                  ),
-                                ),
-                              ],
+                              ),
                             )
                           : Align(
                               alignment: Alignment.centerLeft,
@@ -432,7 +452,7 @@ class _StatsPageState extends State<StatsPage> {
                       onSelected: _selectRangeMode,
                       color: Colors.white,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius: BorderRadius.circular(5),
                       ),
                       itemBuilder: (context) => const [
                         PopupMenuItem(
@@ -458,7 +478,7 @@ class _StatsPageState extends State<StatsPage> {
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
                           color: Colors.white,
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius: BorderRadius.circular(5),
                           border: Border.all(
                             color: const Color(0xFFD9DEE6),
                             width: 1.1,
@@ -623,6 +643,15 @@ class _StatsPageState extends State<StatsPage> {
                       ],
                     ),
                   ),
+                if (trendPoints.isNotEmpty) ...[
+                  const SizedBox(height: 14),
+                  _AssetExpenseTrendCard(
+                    points: trendPoints,
+                    delta: periodDelta,
+                    type: targetType,
+                    mode: _rangeMode,
+                  ),
+                ],
                 ],
               ),
             ),
@@ -1209,10 +1238,12 @@ class _CompactHeaderButton extends StatelessWidget {
   const _CompactHeaderButton({
     required this.icon,
     this.onTap,
+    this.iconSize = 30,
   });
 
   final IconData icon;
   final VoidCallback? onTap;
+  final double iconSize;
 
   @override
   Widget build(BuildContext context) {
@@ -1226,7 +1257,7 @@ class _CompactHeaderButton extends StatelessWidget {
           height: 42,
           child: Icon(
             icon,
-            size: 30,
+            size: iconSize,
             color: onTap == null ? const Color(0xFFCDD4DE) : const Color(0xFF14171C),
           ),
         ),
@@ -1327,6 +1358,7 @@ class SmsInboxPage extends StatefulWidget {
     required this.onRequestSmsAccess,
     required this.onQuickAutoInput,
     required this.onDeleteSelected,
+    required this.onPasteFromClipboard,
   });
 
   final List<WalletKeeperSmsDraft> drafts;
@@ -1339,6 +1371,7 @@ class SmsInboxPage extends StatefulWidget {
   final Future<void> Function() onRequestSmsAccess;
   final Future<void> Function(WalletKeeperSmsDraft draft) onQuickAutoInput;
   final Future<void> Function(Set<String> ids) onDeleteSelected;
+  final Future<void> Function() onPasteFromClipboard;
 
   @override
   State<SmsInboxPage> createState() => _SmsInboxPageState();
@@ -1516,6 +1549,10 @@ class _SmsInboxPageState extends State<SmsInboxPage> {
 
   @override
   Widget build(BuildContext context) {
+    final bottomInset = bottomOverlayHeightOf(context);
+    final actionBarBottomInset = math.max(0.0, bottomInset - 38);
+    final applySystemBottomSafeArea = bottomInset == 0;
+    final actionBarBottomPadding = bottomInset > 0 ? 22.0 : 12.0;
     final allSelected =
         _visibleDrafts.isNotEmpty && _selectedIds.length == _visibleDrafts.length;
     return PopScope(
@@ -1537,6 +1574,7 @@ class _SmsInboxPageState extends State<SmsInboxPage> {
               trailing: [
                 _CompactHeaderButton(
                   icon: _deleteMode ? Icons.close_rounded : Icons.delete_outline_rounded,
+                  iconSize: 27,
                   onTap: _visibleDrafts.isEmpty
                       ? null
                       : () {
@@ -1549,13 +1587,14 @@ class _SmsInboxPageState extends State<SmsInboxPage> {
                 const SizedBox(width: 4),
                 _CompactHeaderButton(
                   icon: Icons.settings_outlined,
+                  iconSize: 27,
                   onTap: widget.onOpenSettingsPage,
                 ),
               ],
             ),
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.only(bottom: 24),
+                padding: EdgeInsets.only(bottom: bottomInset + 24),
                 children: [
                 Container(
                   margin: const EdgeInsets.only(bottom: 10),
@@ -1880,11 +1919,17 @@ class _SmsInboxPageState extends State<SmsInboxPage> {
                 ],
               ),
             ),
-            SafeArea(
-              top: false,
-              child: Container(
-                color: Colors.white,
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            Container(
+              color: Colors.white,
+              padding: EdgeInsets.fromLTRB(
+                16,
+                12,
+                16,
+                actionBarBottomPadding + actionBarBottomInset,
+              ),
+              child: SafeArea(
+                top: false,
+                bottom: applySystemBottomSafeArea,
                 child: _deleteMode
                     ? FilledButton(
                         onPressed: _selectedIds.isEmpty
@@ -1904,16 +1949,40 @@ class _SmsInboxPageState extends State<SmsInboxPage> {
                         ),
                         child: const Text('선택삭제'),
                       )
-                    : FilledButton(
-                        onPressed: _importing ? null : _showImportDialog,
-                        style: FilledButton.styleFrom(
-                          backgroundColor: const Color(0xFFFF6A5F),
-                          minimumSize: const Size.fromHeight(48),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
+                    : Row(
+                        children: [
+                          Expanded(
+                            child: FilledButton(
+                              onPressed: _importing ? null : _showImportDialog,
+                              style: FilledButton.styleFrom(
+                                backgroundColor: const Color(0xFFFF6A5F),
+                                minimumSize: const Size.fromHeight(48),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                              ),
+                              child: Text(_importing ? '가져오는 중' : '문자 가져오기'),
+                            ),
                           ),
-                        ),
-                        child: Text(_importing ? '가져오는 중' : '문자 가져오기'),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: widget.onPasteFromClipboard,
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: const Color(0xFFFF6A5F),
+                                side: const BorderSide(color: Color(0xFFFFD2CD)),
+                                minimumSize: const Size.fromHeight(48),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                              ),
+                              child: const Text(
+                                '문자 붙여넣기',
+                                style: TextStyle(fontWeight: FontWeight.w800),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
               ),
             ),
@@ -1978,44 +2047,6 @@ class SmsSettingsPage extends StatelessWidget {
                   title: '알림바에 문자 수신 알림 표시하기',
                   value: settings.showNotification,
                   onChanged: (value) => onChanged(settings.copyWith(showNotification: value)),
-                ),
-                _SettingsActionRow(
-                  title: '문자 가져오기 기간 설정',
-                  value: '최근 ${settings.importWindowDays}일',
-                  onTap: () async {
-                    final controller = TextEditingController(
-                      text: settings.importWindowDays.toString(),
-                    );
-                    final result = await showDialog<int>(
-                      context: context,
-                      builder: (context) => AlertDialog(
-                        backgroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-                        title: const Text('가져오기 기간 설정'),
-                        content: TextField(
-                          controller: controller,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(hintText: '일 수 입력'),
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.of(context).pop(),
-                            child: const Text('취소'),
-                          ),
-                          TextButton(
-                            onPressed: () => Navigator.of(context).pop(
-                              int.tryParse(controller.text.trim()),
-                            ),
-                            child: const Text('저장'),
-                          ),
-                        ],
-                      ),
-                    );
-                    if (result == null) return;
-                    await onChanged(
-                      settings.copyWith(importWindowDays: result.clamp(1, 365)),
-                    );
-                  },
                 ),
               ],
             ),
@@ -2123,74 +2154,29 @@ class _SettingsSwitchRow extends StatelessWidget {
   }
 }
 
-class _SettingsActionRow extends StatelessWidget {
-  const _SettingsActionRow({
-    required this.title,
-    this.value,
-    required this.onTap,
-  });
-
-  final String title;
-  final String? value;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: const BoxDecoration(
-          color: Color(0xFFFFFFFF),
-          border: Border(bottom: BorderSide(color: Color(0xFFE6EAF0))),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                title,
-                style: const TextStyle(
-                  color: Color(0xFF14171C),
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-            if (value != null)
-              Text(
-                value!,
-                style: const TextStyle(
-                  color: Color(0xFFFF6A5F),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class EntryEditorPage extends StatefulWidget {
   const EntryEditorPage({
     super.key,
     this.existing,
     this.smsDraft,
+    required this.categorySuggestions,
     required this.featureAccess,
     required this.onRequestSmsAccess,
     required this.onSave,
     required this.onCancel,
     this.onDeleteDraft,
+    this.onDeleteEntry,
   });
 
   final LedgerEntry? existing;
   final WalletKeeperSmsDraft? smsDraft;
+  final List<String> categorySuggestions;
   final WalletKeeperFeatureAccess featureAccess;
   final Future<void> Function() onRequestSmsAccess;
   final Future<void> Function(LedgerEntry entry) onSave;
   final Future<void> Function() onCancel;
   final Future<void> Function()? onDeleteDraft;
+  final Future<void> Function()? onDeleteEntry;
 
   @override
   State<EntryEditorPage> createState() => _EntryEditorPageState();
@@ -2201,6 +2187,7 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
   late final TextEditingController _amountController;
   late final TextEditingController _categoryController;
   late final TextEditingController _noteController;
+  late final FocusNode _categoryFocusNode;
   List<String> _attachmentPaths = const [];
   late EntryType _type;
   DateTime _date = DateTime.now();
@@ -2223,7 +2210,10 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
     final sourceAmount = _formatAmountForEditing(source?.amount ?? draft?.amount ?? 0);
     final sourceCategory = source?.category ?? draft?.category ?? '';
     final sourceNote = source?.note ?? draft?.note ?? '';
-    final sourceType = source?.type ?? draft?.type ?? EntryType.expense;
+    final rawSourceType = source?.type ?? draft?.type ?? EntryType.expense;
+    final sourceType = rawSourceType == EntryType.income
+        ? EntryType.income
+        : EntryType.expense;
     final sourceDate = source?.date ?? draft?.date;
     final sourceAttachments = source?.attachmentPaths ?? const <String>[];
     return _titleController.text.trim() != sourceTitle.trim() ||
@@ -2244,6 +2234,7 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
     _amountController = TextEditingController();
     _categoryController = TextEditingController();
     _noteController = TextEditingController();
+    _categoryFocusNode = FocusNode();
     _applySource();
   }
 
@@ -2269,7 +2260,9 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
       _setAmountText(draft.amount.toStringAsFixed(0));
       _setCategoryText(draft.category);
       _noteController.text = '';
-      _type = draft.type;
+      _type = draft.type == EntryType.income
+          ? EntryType.income
+          : EntryType.expense;
       _date = draft.date;
       return;
     }
@@ -2278,7 +2271,10 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
     _setCategoryText(existing?.category ?? '', editedByUser: existing != null);
     _noteController.text = existing?.note ?? '';
     _attachmentPaths = List<String>.from(existing?.attachmentPaths ?? const []);
-    _type = existing?.type ?? EntryType.expense;
+    final resolvedType = existing?.type ?? EntryType.expense;
+    _type = resolvedType == EntryType.income
+        ? EntryType.income
+        : EntryType.expense;
     _date = existing?.date ?? DateTime.now();
   }
 
@@ -2291,8 +2287,7 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
 
   void _handleTypeChanged(EntryType type) {
     if (_type == type) return;
-    final shouldAutoReplaceCategory =
-        widget.existing == null && !_categoryEditedByUser;
+    final shouldAutoReplaceCategory = _fromSmsDraft && !_categoryEditedByUser;
     setState(() {
       _type = type;
       if (shouldAutoReplaceCategory) {
@@ -2307,7 +2302,24 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
     _amountController.dispose();
     _categoryController.dispose();
     _noteController.dispose();
+    _categoryFocusNode.dispose();
     super.dispose();
+  }
+
+  List<String> get _categorySuggestions {
+    final values = <String>{};
+    for (final category in widget.categorySuggestions) {
+      final trimmed = category.trim();
+      if (trimmed.isNotEmpty) {
+        values.add(trimmed);
+      }
+    }
+    final current = _categoryController.text.trim();
+    if (current.isNotEmpty) {
+      values.add(current);
+    }
+    final list = values.toList()..sort();
+    return list;
   }
 
   Future<bool> confirmDiscardIfNeeded() async {
@@ -2347,7 +2359,7 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
           FilledButton(
             onPressed: () => Navigator.of(context).pop(true),
             style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFFE76158),
+              backgroundColor: const Color(0xFFFF695D),
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
             ),
@@ -2484,6 +2496,11 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
     });
   }
 
+  List<EntryType> get _editableTypes => const [
+        EntryType.expense,
+        EntryType.income,
+      ];
+
   @override
   Widget build(BuildContext context) {
     final bottomInset = bottomOverlayHeightOf(context);
@@ -2504,30 +2521,36 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
               padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
               children: [
                 Row(
-                  children: EntryType.values.map((type) {
+                  children: _editableTypes.map((type) {
                     final selected = _type == type;
-                    final isLast = type == EntryType.transfer;
+                    final isLast = type == _editableTypes.last;
                     return Expanded(
                       child: Padding(
                         padding: EdgeInsets.only(right: isLast ? 0 : 10),
                         child: GestureDetector(
                           onTap: () => _handleTypeChanged(type),
-                        child: Container(
-                            height: 42,
+                          child: Container(
+                            height: 48,
                             decoration: BoxDecoration(
-                              color: Colors.white,
+                              color: selected
+                                  ? const Color(0xFFE76158)
+                                  : Colors.white,
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
-                                color: selected ? const Color(0xFFFF6A5F) : const Color(0xFFDDE3EA),
-                                width: selected ? 2 : 1.2,
+                                color: selected
+                                    ? const Color(0xFFE76158)
+                                    : const Color(0xFFDDE3EA),
+                                width: selected ? 1.4 : 1.2,
                               ),
                             ),
                             alignment: Alignment.center,
                             child: Text(
                               type.label(context),
                               style: TextStyle(
-                                color: selected ? const Color(0xFFFF6A5F) : const Color(0xFF5F6671),
-                                fontSize: 13,
+                                color: selected
+                                    ? Colors.white
+                                    : const Color(0xFF5F6671),
+                                fontSize: 14,
                                 fontWeight: FontWeight.w800,
                               ),
                             ),
@@ -2542,8 +2565,13 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
                   label: '날짜',
                   child: InkWell(
                     onTap: _pickDateTime,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 10),
+                    child: Container(
+                      padding: const EdgeInsets.only(bottom: 10, top: 6),
+                      decoration: const BoxDecoration(
+                        border: Border(
+                          bottom: BorderSide(color: Color(0xFFE1E6EE)),
+                        ),
+                      ),
                       child: Row(
                         children: [
                           Text(
@@ -2556,7 +2584,7 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
                           ),
                           const Spacer(),
                           const Icon(
-                            Icons.sync_rounded,
+                            Icons.calendar_month_rounded,
                             color: Color(0xFF98A1AD),
                             size: 18,
                           ),
@@ -2565,6 +2593,7 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
                     ),
                   ),
                 ),
+                const SizedBox(height: 12),
                 _EditorRow(
                   label: '금액',
                   child: TextField(
@@ -2578,7 +2607,7 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
                     ),
                     decoration: const InputDecoration(
                       border: InputBorder.none,
-                      hintText: '0원',
+                      hintText: '0',
                       hintStyle: TextStyle(
                         color: Color(0xFFA5ACB7),
                         fontSize: 14,
@@ -2588,49 +2617,131 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
                     ),
                   ),
                 ),
+                const SizedBox(height: 12),
                 _EditorRow(
                   label: '분류',
-                  child: TextField(
-                    controller: _categoryController,
-                    onChanged: (_) {
-                      if (_applyingCategoryText) return;
-                      _categoryEditedByUser = true;
+                  child: RawAutocomplete<String>(
+                    textEditingController: _categoryController,
+                    focusNode: _categoryFocusNode,
+                    optionsViewOpenDirection: OptionsViewOpenDirection.up,
+                    optionsBuilder: (textEditingValue) {
+                      final query = textEditingValue.text.trim().toLowerCase();
+                      final source = _categorySuggestions;
+                      if (query.isEmpty) {
+                        return source.take(8);
+                      }
+                      return source.where(
+                        (item) => item.toLowerCase().contains(query),
+                      ).take(8);
                     },
-                    style: const TextStyle(
-                      color: Color(0xFF20242B),
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                    ),
-                    decoration: const InputDecoration(
-                      border: InputBorder.none,
-                      hintText: '분류 입력',
-                      hintStyle: TextStyle(
-                        color: Color(0xFFA5ACB7),
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      isDense: true,
-                    ),
+                    onSelected: (value) {
+                      _setCategoryText(value, editedByUser: true);
+                    },
+                    fieldViewBuilder:
+                        (context, controller, focusNode, onFieldSubmitted) {
+                      return TextField(
+                        controller: controller,
+                        focusNode: focusNode,
+                        onChanged: (_) {
+                          if (_applyingCategoryText) return;
+                          _categoryEditedByUser = true;
+                        },
+                        style: const TextStyle(
+                          color: Color(0xFF20242B),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                        decoration: const InputDecoration(
+                          border: InputBorder.none,
+                          hintText: '분류 입력',
+                          hintStyle: TextStyle(
+                            color: Color(0xFFA5ACB7),
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          isDense: true,
+                        ),
+                      );
+                    },
+                    optionsViewBuilder: (context, onSelected, options) {
+                      final list = options.toList(growable: false);
+                      if (list.isEmpty) {
+                        return const SizedBox.shrink();
+                      }
+                      final maxHeight = math.min(
+                        240.0,
+                        MediaQuery.sizeOf(context).height * 0.3,
+                      );
+                      return Align(
+                        alignment: Alignment.topLeft,
+                        child: Material(
+                          color: Colors.white,
+                          elevation: 10,
+                          borderRadius: BorderRadius.circular(16),
+                          child: Container(
+                            width: 220,
+                            constraints: BoxConstraints(maxHeight: maxHeight),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: const Color(0xFFE6EAF0)),
+                            ),
+                            child: ListView.separated(
+                              padding: const EdgeInsets.symmetric(vertical: 6),
+                              shrinkWrap: true,
+                              itemCount: list.length,
+                              separatorBuilder: (context, index) =>
+                                  const Divider(height: 1, color: Color(0xFFF0F3F7)),
+                              itemBuilder: (context, index) {
+                                final option = list[index];
+                                return InkWell(
+                                  onTap: () => onSelected(option),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 11,
+                                    ),
+                                    child: Text(
+                                      option,
+                                      style: const TextStyle(
+                                        color: Color(0xFF20242B),
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                      );
+                    },
                   ),
                 ),
+                const SizedBox(height: 12),
                 _EditorRow(
                   label: '내용',
                   child: TextField(
                     controller: _titleController,
+                    keyboardType: TextInputType.multiline,
+                    textInputAction: TextInputAction.newline,
+                    minLines: 2,
+                    maxLines: null,
                     style: const TextStyle(
                       color: Color(0xFF20242B),
-                      fontSize: 14,
+                      fontSize: 13,
                       fontWeight: FontWeight.w700,
+                      height: 1.45,
                     ),
                     decoration: const InputDecoration(
                       border: InputBorder.none,
                       hintText: '내용 입력',
                       hintStyle: TextStyle(
                         color: Color(0xFFA5ACB7),
-                        fontSize: 14,
+                        fontSize: 13,
                         fontWeight: FontWeight.w600,
                       ),
-                      isDense: true,
                     ),
                   ),
                 ),
@@ -2820,6 +2931,56 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
                           ),
                         ),
                       ]
+                    : widget.existing != null
+                    ? [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: widget.onCancel,
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: const Color(0xFF343A44),
+                              side: const BorderSide(color: Color(0xFFD4DAE3)),
+                              minimumSize: const Size.fromHeight(44),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                            ),
+                            child: const Text('취소'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: widget.onDeleteEntry,
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: const Color(0xFF343A44),
+                              side: const BorderSide(color: Color(0xFFD4DAE3)),
+                              minimumSize: const Size.fromHeight(44),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                            ),
+                            icon: const Icon(
+                              Icons.delete_outline_rounded,
+                              size: 18,
+                            ),
+                            label: const Text('삭제'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: FilledButton(
+                            onPressed: _saving ? null : _save,
+                            style: FilledButton.styleFrom(
+                              backgroundColor: const Color(0xFFFF6A5F),
+                              minimumSize: const Size.fromHeight(44),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                            ),
+                            child: Text(_saving ? '저장 중' : '저장'),
+                          ),
+                        ),
+                      ]
                     : [
                         Expanded(
                           child: OutlinedButton(
@@ -2941,7 +3102,7 @@ class _RootTabHeader extends StatelessWidget {
           height: 44,
           child: Row(
             children: [
-              const SizedBox(width: 34),
+              const SizedBox(width: 8),
               Text(
                 title,
                 style: const TextStyle(
@@ -2958,14 +3119,16 @@ class _RootTabHeader extends StatelessWidget {
   }
 }
 
-class SettingsPage extends StatelessWidget {
+class SettingsPage extends StatefulWidget {
   const SettingsPage({
     super.key,
     required this.session,
     required this.smsSettings,
     required this.onOpenSmsSettings,
-    required this.onOpenDataSettings,
-    required this.onOpenPrivacyInfo,
+    required this.onOpenProfileInfo,
+    required this.onOpenInquiryList,
+    required this.onOpenTermsInfo,
+    required this.onLogout,
     required this.onSignInWithKakao,
     required this.onSignInWithGoogle,
     required this.onSignInWithNaver,
@@ -2975,21 +3138,48 @@ class SettingsPage extends StatelessWidget {
   final WalletKeeperUserSession? session;
   final WalletKeeperSmsSettings smsSettings;
   final VoidCallback onOpenSmsSettings;
-  final VoidCallback onOpenDataSettings;
-  final VoidCallback onOpenPrivacyInfo;
+  final VoidCallback onOpenProfileInfo;
+  final VoidCallback onOpenInquiryList;
+  final VoidCallback onOpenTermsInfo;
+  final Future<void> Function() onLogout;
   final Future<void> Function() onSignInWithKakao;
   final Future<void> Function() onSignInWithGoogle;
   final Future<void> Function() onSignInWithNaver;
   final Future<void> Function() onSignInWithApple;
 
   @override
+  State<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<SettingsPage> {
+  String? _loadingProvider;
+
+  Future<void> _runProviderAction(
+    String provider,
+    Future<void> Function() action,
+  ) async {
+    if (_loadingProvider != null) return;
+    setState(() => _loadingProvider = provider);
+    try {
+      await action();
+    } finally {
+      if (mounted) {
+        setState(() => _loadingProvider = null);
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final bottomInset = bottomOverlayHeightOf(context);
-    final account = session;
+    final account = widget.session;
     final isApplePlatform = Platform.isIOS || Platform.isMacOS;
     final linkedLabel = account == null || account.isGuest
         ? '비회원'
         : '${account.providerLabel} 연결됨';
+    final linkedProvider = account != null && !account.isGuest
+        ? account.loginType
+        : null;
 
     return Container(
       color: const Color(0xFFF7F8FA),
@@ -3000,96 +3190,163 @@ class SettingsPage extends StatelessWidget {
             child: ListView(
               padding: EdgeInsets.fromLTRB(16, 10, 16, bottomInset + 20),
               children: [
-                Container(
-                  padding: const EdgeInsets.fromLTRB(18, 20, 18, 18),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(22),
-                    border: Border.all(color: const Color(0xFFE6EAF0)),
-                  ),
-                  child: Column(
-                    children: [
-                      CircleAvatar(
-                        radius: 34,
-                        backgroundColor: const Color(0xFFFFECE9),
-                        backgroundImage: account?.profileImage.isNotEmpty == true
-                            ? NetworkImage(account!.profileImage)
-                            : null,
-                        child: account?.profileImage.isNotEmpty == true
-                            ? null
-                            : const Icon(
-                                Icons.person_rounded,
-                                size: 34,
-                                color: Color(0xFFFF6A5F),
+                GestureDetector(
+                  onTap: widget.onOpenProfileInfo,
+                  behavior: HitTestBehavior.opaque,
+                  child: Container(
+                    padding: const EdgeInsets.fromLTRB(18, 20, 18, 18),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(22),
+                      border: Border.all(color: const Color(0xFFE6EAF0)),
+                    ),
+                    child: Column(
+                      children: [
+                        CircleAvatar(
+                          radius: 34,
+                          backgroundColor: const Color(0xFFFFECE9),
+                          backgroundImage: account?.profileImage.isNotEmpty == true
+                              ? NetworkImage(account!.profileImage)
+                              : null,
+                          child: account?.profileImage.isNotEmpty == true
+                              ? null
+                              : const Icon(
+                                  Icons.person_rounded,
+                                  size: 34,
+                                  color: Color(0xFFFF6A5F),
+                                ),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          account?.name.isNotEmpty == true ? account!.name : '지갑지켜 사용자',
+                          style: const TextStyle(
+                            color: Color(0xFF14171C),
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          linkedLabel,
+                          style: const TextStyle(
+                            color: Color(0xFF7B8491),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        if (linkedProvider == null || linkedProvider == 'kakao')
+                          _SocialLoginButtonTile(
+                            label: '카카오로 시작하기',
+                            provider: 'kakao',
+                            active: account?.loginType == 'kakao',
+                            loading: _loadingProvider == 'kakao',
+                            backgroundColor: const Color(0xFFFFD500),
+                            foregroundColor: const Color(0xD9000000),
+                            borderColor: Colors.transparent,
+                            iconPath: 'assets/icons/kakao_logo.png',
+                            onTap: () => _runProviderAction(
+                              'kakao',
+                              widget.onSignInWithKakao,
+                            ),
+                          ),
+                        if (linkedProvider == null || linkedProvider == 'naver') ...[
+                          const SizedBox(height: 10),
+                          _SocialLoginButtonTile(
+                            label: '네이버로 시작하기',
+                            provider: 'naver',
+                            active: account?.loginType == 'naver',
+                            loading: _loadingProvider == 'naver',
+                            enabled: false,
+                            disabledLabel: '네이버 로그인 준비중',
+                            backgroundColor: const Color(0xFFB7EBCF),
+                            foregroundColor: const Color(0xFF256B46),
+                            borderColor: Colors.transparent,
+                            iconPath: 'assets/icons/naver_logo.png',
+                            onTap: () => _runProviderAction(
+                              'naver',
+                              widget.onSignInWithNaver,
+                            ),
+                          ),
+                        ],
+                        if (linkedProvider == null || linkedProvider == 'google') ...[
+                          const SizedBox(height: 10),
+                          _SocialLoginButtonTile(
+                            label: 'Google로 시작하기',
+                            provider: 'google',
+                            active: account?.loginType == 'google',
+                            loading: _loadingProvider == 'google',
+                            backgroundColor: Colors.white,
+                            foregroundColor: const Color(0xFF14171C),
+                            borderColor: const Color(0xFFD9DEE6),
+                            iconPath: 'assets/icons/google_logo.png',
+                            onTap: () => _runProviderAction(
+                              'google',
+                              widget.onSignInWithGoogle,
+                            ),
+                          ),
+                        ],
+                        if (isApplePlatform &&
+                            (linkedProvider == null || linkedProvider == 'apple')) ...[
+                          const SizedBox(height: 10),
+                          _SocialLoginButtonTile(
+                            label: 'Apple로 시작하기',
+                            provider: 'apple',
+                            active: account?.loginType == 'apple',
+                            loading: _loadingProvider == 'apple',
+                            backgroundColor: const Color(0xFF111111),
+                            foregroundColor: Colors.white,
+                            borderColor: Colors.transparent,
+                            iconPath: 'assets/icons/apple_logo.png',
+                            onTap: () => _runProviderAction(
+                              'apple',
+                              widget.onSignInWithApple,
+                            ),
+                          ),
+                        ],
+                        if (linkedProvider != null) ...[
+                          const SizedBox(height: 10),
+                          GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: _loadingProvider == 'logout'
+                                ? null
+                                : () => _runProviderAction(
+                                    'logout',
+                                    widget.onLogout,
+                                  ),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 4),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  if (_loadingProvider == 'logout') ...[
+                                    const SizedBox(
+                                      width: 14,
+                                      height: 14,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Color(0xFFFF695D),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                  ],
+                                  const Text(
+                                    '로그아웃',
+                                    style: TextStyle(
+                                      color: Color(0xFFFF695D),
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w800,
+                                      decoration: TextDecoration.underline,
+                                      decorationColor: Color(0xFFFF695D),
+                                    ),
+                                  ),
+                                ],
                               ),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        account?.name.isNotEmpty == true ? account!.name : '지갑지켜 사용자',
-                        style: const TextStyle(
-                          color: Color(0xFF14171C),
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        account?.email.isNotEmpty == true ? account!.email : linkedLabel,
-                        style: const TextStyle(
-                          color: Color(0xFF7B8491),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      _SocialLoginButtonTile(
-                        label: '카카오로 시작하기',
-                        provider: 'kakao',
-                        active: account?.loginType == 'kakao',
-                        backgroundColor: const Color(0xFFFFD500),
-                        foregroundColor: const Color(0xD9000000),
-                        borderColor: Colors.transparent,
-                        iconPath: 'assets/icons/kakao_logo.png',
-                        onTap: onSignInWithKakao,
-                      ),
-                      const SizedBox(height: 10),
-                      _SocialLoginButtonTile(
-                        label: '네이버로 시작하기',
-                        provider: 'naver',
-                        active: account?.loginType == 'naver',
-                        enabled: false,
-                        disabledLabel: '네이버 로그인 준비중',
-                        backgroundColor: const Color(0xFFB7EBCF),
-                        foregroundColor: const Color(0xFF256B46),
-                        borderColor: Colors.transparent,
-                        iconPath: 'assets/icons/naver_logo.png',
-                        onTap: onSignInWithNaver,
-                      ),
-                      const SizedBox(height: 10),
-                      _SocialLoginButtonTile(
-                        label: 'Google로 시작하기',
-                        provider: 'google',
-                        active: account?.loginType == 'google',
-                        backgroundColor: Colors.white,
-                        foregroundColor: const Color(0xFF14171C),
-                        borderColor: const Color(0xFFD9DEE6),
-                        iconPath: 'assets/icons/google_logo.png',
-                        onTap: onSignInWithGoogle,
-                      ),
-                      if (isApplePlatform) ...[
-                        const SizedBox(height: 10),
-                        _SocialLoginButtonTile(
-                          label: 'Apple로 시작하기',
-                          provider: 'apple',
-                          active: account?.loginType == 'apple',
-                          backgroundColor: const Color(0xFF111111),
-                          foregroundColor: Colors.white,
-                          borderColor: Colors.transparent,
-                          iconPath: 'assets/icons/apple_logo.png',
-                          onTap: onSignInWithApple,
-                        ),
+                            ),
+                          ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
                 ),
                 const SizedBox(height: 18),
@@ -3099,20 +3356,20 @@ class SettingsPage extends StatelessWidget {
                     _SettingsMenuTile(
                       icon: Icons.sms_outlined,
                       title: '문자 설정',
-                      subtitle: smsSettings.smsReceiveEnabled ? '문자 감지 사용 중' : '문자 감지 꺼짐',
-                      onTap: onOpenSmsSettings,
+                      subtitle: widget.smsSettings.smsReceiveEnabled ? '문자 감지 사용 중' : '문자 감지 꺼짐',
+                      onTap: widget.onOpenSmsSettings,
                     ),
                     _SettingsMenuTile(
-                      icon: Icons.cloud_outlined,
-                      title: '데이터 동기화',
-                      subtitle: account == null ? '준비 중' : '서버 저장/연동 상태 확인',
-                      onTap: onOpenDataSettings,
+                      icon: Icons.support_agent_rounded,
+                      title: '문의',
+                      subtitle: '내 문의 내역과 새 문의 작성',
+                      onTap: widget.onOpenInquiryList,
                     ),
                     _SettingsMenuTile(
                       icon: Icons.privacy_tip_outlined,
-                      title: '개인정보 및 저장 안내',
-                      subtitle: '수집 정보와 서버 저장 범위 확인',
-                      onTap: onOpenPrivacyInfo,
+                      title: '이용약관',
+                      subtitle: '이용약관과 개인정보처리방침 보기',
+                      onTap: widget.onOpenTermsInfo,
                     ),
                   ],
                 ),
@@ -3125,57 +3382,555 @@ class SettingsPage extends StatelessWidget {
   }
 }
 
-class DataSettingsPage extends StatelessWidget {
-  const DataSettingsPage({
+class ProfileInfoPage extends StatelessWidget {
+  const ProfileInfoPage({
     super.key,
     required this.session,
     required this.onBack,
-    required this.onSyncNow,
   });
 
   final WalletKeeperUserSession? session;
   final VoidCallback onBack;
-  final Future<void> Function() onSyncNow;
 
   @override
   Widget build(BuildContext context) {
     final account = session;
+    final bottomInset = bottomOverlayHeightOf(context);
+    final rows = <_SettingsKeyValue>[
+      if (account != null && !account.isGuest && account.name.isNotEmpty)
+        _SettingsKeyValue('이름', account.name),
+      if (account != null && !account.isGuest && account.email.isNotEmpty)
+        _SettingsKeyValue('이메일', account.email),
+      _SettingsKeyValue('기기 시리얼', account?.deviceSerial ?? '-'),
+    ];
     return Container(
       color: const Color(0xFFF7F8FA),
       child: Column(
         children: [
-          _CompactPageHeader(title: '데이터 동기화', onBack: onBack),
+          _CompactPageHeader(title: '프로필 정보', onBack: onBack),
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
+              padding: EdgeInsets.fromLTRB(16, 10, 16, bottomInset + 24),
               children: [
-                _SettingsInfoCard(
-                  title: '계정 상태',
-                  body: account == null
-                      ? '계정 정보를 아직 불러오지 못했습니다.'
-                      : '현재 ${account.providerLabel} 기준으로 서버 저장 데이터가 연결됩니다.\n비회원 상태에서는 기기 시리얼 코드로 먼저 서버와 바인딩됩니다.',
+                _ProfileMemberIdCard(userId: account?.userId ?? '-'),
+                if (account != null && !account.isGuest) ...[
+                  const SizedBox(height: 14),
+                  _ProfileLinkedProviderCard(account: account),
+                ],
+                const SizedBox(height: 14),
+                _SettingsKeyValueCard(rows: rows),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class InquiryListPage extends StatelessWidget {
+  const InquiryListPage({
+    super.key,
+    required this.inquiries,
+    required this.onBack,
+    required this.onRefresh,
+    required this.onOpenDetail,
+    required this.onOpenCompose,
+  });
+
+  final List<WalletKeeperInquiry> inquiries;
+  final VoidCallback onBack;
+  final Future<void> Function() onRefresh;
+  final ValueChanged<WalletKeeperInquiry> onOpenDetail;
+  final VoidCallback onOpenCompose;
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = bottomOverlayHeightOf(context);
+    return Container(
+      color: const Color(0xFFF7F8FA),
+      child: Stack(
+        children: [
+          Column(
+            children: [
+              _CompactPageHeader(title: '내 문의', onBack: onBack),
+              Expanded(
+                child: RefreshIndicator(
+                  onRefresh: onRefresh,
+                  color: const Color(0xFFE76158),
+                  child: ListView(
+                    padding: EdgeInsets.fromLTRB(16, 10, 16, bottomInset + 92),
+                    children: [
+                      if (inquiries.isEmpty)
+                        const _AssetSimpleEmpty(
+                          title: '등록된 문의가 없습니다.',
+                          subtitle: '우측 하단 버튼으로 새 문의를 작성할 수 있습니다.',
+                        )
+                      else
+                        ...List.generate(inquiries.length, (index) {
+                          final inquiry = inquiries[index];
+                          return Padding(
+                            padding: EdgeInsets.only(
+                              bottom: index == inquiries.length - 1 ? 0 : 12,
+                            ),
+                            child: _InquiryListCard(
+                              inquiry: inquiry,
+                              onTap: () => onOpenDetail(inquiry),
+                            ),
+                          );
+                        }),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          Positioned(
+            right: 18,
+            bottom: bottomInset + 18,
+            child: FloatingActionButton(
+              heroTag: 'inquiry-compose-fab',
+              backgroundColor: const Color(0xFFFF695D),
+              foregroundColor: Colors.white,
+              elevation: 2,
+              onPressed: onOpenCompose,
+              child: const Icon(Icons.edit_rounded),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class InquiryDetailPage extends StatelessWidget {
+  const InquiryDetailPage({
+    super.key,
+    required this.inquiry,
+    required this.onBack,
+  });
+
+  final WalletKeeperInquiry inquiry;
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = bottomOverlayHeightOf(context);
+    final createdLabel = DateFormat('yyyy.MM.dd HH:mm').format(inquiry.createdAt);
+    final repliedLabel = inquiry.repliedAt == null
+        ? null
+        : DateFormat('yyyy.MM.dd HH:mm').format(inquiry.repliedAt!);
+    return Container(
+      color: const Color(0xFFF7F8FA),
+      child: Column(
+        children: [
+          _CompactPageHeader(title: '문의 상세', onBack: onBack),
+          Expanded(
+            child: ListView(
+              padding: EdgeInsets.fromLTRB(16, 10, 16, bottomInset + 24),
+              children: [
+                Container(
+                  padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(color: const Color(0xFFE6EAF0)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              inquiry.title,
+                              style: const TextStyle(
+                                color: Color(0xFF14171C),
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          _InquiryStatusChip(status: inquiry.status, hasReply: inquiry.hasReply),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        '등록일 $createdLabel',
+                        style: const TextStyle(
+                          color: Color(0xFF9BA3AF),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      if (repliedLabel != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          '답변일 $repliedLabel',
+                          style: const TextStyle(
+                            color: Color(0xFF9BA3AF),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 14),
+                      Container(
+                        width: double.infinity,
+                        height: 1,
+                        color: const Color(0xFFE9EDF3),
+                      ),
+                      const SizedBox(height: 14),
+                      const Text(
+                        '문의 내용',
+                        style: TextStyle(
+                          color: Color(0xFF6E7784),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        inquiry.content,
+                        style: const TextStyle(
+                          color: Color(0xFF14171C),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          height: 1.55,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 14),
-                _SettingsKeyValueCard(
-                  rows: [
-                    _SettingsKeyValue('회원 ID', account?.userId ?? '-'),
-                    _SettingsKeyValue('로그인 유형', account?.providerLabel ?? '-'),
-                    _SettingsKeyValue('기기 시리얼', account?.deviceSerial ?? '-'),
-                  ],
-                ),
-                const SizedBox(height: 18),
-                FilledButton(
-                  onPressed: onSyncNow,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFFFF6A5F),
-                    minimumSize: const Size.fromHeight(48),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                  child: const Text('지금 서버 동기화'),
+                _SettingsInfoCard(
+                  title: '답변',
+                  body: inquiry.hasReply
+                      ? inquiry.adminReply
+                      : '아직 답변이 등록되지 않았습니다.',
                 ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class InquiryComposePage extends StatefulWidget {
+  const InquiryComposePage({
+    super.key,
+    required this.session,
+    required this.onBack,
+    required this.onSave,
+  });
+
+  final WalletKeeperUserSession? session;
+  final VoidCallback onBack;
+  final Future<void> Function({
+    required String title,
+    required String content,
+    required String replyEmail,
+  }) onSave;
+
+  @override
+  State<InquiryComposePage> createState() => _InquiryComposePageState();
+}
+
+class _InquiryComposePageState extends State<InquiryComposePage> {
+  late final TextEditingController _titleController;
+  late final TextEditingController _contentController;
+  late final TextEditingController _replyEmailController;
+  bool _saving = false;
+
+  bool get hasUnsavedChanges {
+    if (_saving) return false;
+    final sourceEmail = widget.session?.email ?? '';
+    return _titleController.text.trim().isNotEmpty ||
+        _contentController.text.trim().isNotEmpty ||
+        _replyEmailController.text.trim() != sourceEmail.trim();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _titleController = TextEditingController();
+    _contentController = TextEditingController();
+    _replyEmailController = TextEditingController(text: widget.session?.email ?? '');
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _contentController.dispose();
+    _replyEmailController.dispose();
+    super.dispose();
+  }
+
+  Future<bool> confirmDiscardIfNeeded() async {
+    if (!hasUnsavedChanges) return true;
+    final shouldLeave = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: const Text(
+          '작성 중인 내용이 있습니다',
+          style: TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.w800,
+            color: Color(0xFF111827),
+          ),
+        ),
+        content: const Text(
+          '정말로 나가시겠습니까?',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF374151),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text(
+              '취소',
+              style: TextStyle(
+                color: Color(0xFF6B7280),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFE76158),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+            child: const Text(
+              '나가기',
+              style: TextStyle(fontWeight: FontWeight.w800),
+            ),
+          ),
+        ],
+      ),
+    );
+    return shouldLeave == true;
+  }
+
+  Future<void> _save() async {
+    final title = _titleController.text.trim();
+    final content = _contentController.text.trim();
+    if (title.isEmpty || content.isEmpty) {
+      await showAppToast('문의 제목과 내용을 입력해주세요.');
+      return;
+    }
+    setState(() => _saving = true);
+    await widget.onSave(
+      title: title,
+      content: content,
+      replyEmail: _replyEmailController.text.trim(),
+    );
+    if (!mounted) return;
+    setState(() => _saving = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = bottomOverlayHeightOf(context);
+    final actionBarBottomInset = math.max(0.0, bottomInset - 38);
+    final applySystemBottomSafeArea = bottomInset == 0;
+    final actionBarBottomPadding = bottomInset > 0 ? 22.0 : 12.0;
+    return Container(
+      color: const Color(0xFFF7F8FA),
+      child: Column(
+        children: [
+          _CompactPageHeader(
+            title: '문의쓰기',
+            onBack: widget.onBack,
+          ),
+          Expanded(
+            child: ListView(
+              padding: EdgeInsets.fromLTRB(16, 10, 16, bottomInset + 96),
+              children: [
+                Container(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: const Color(0xFFE6EAF0)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        '제목',
+                        style: TextStyle(
+                          color: Color(0xFF7B8491),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _titleController,
+                        style: const TextStyle(
+                          color: Color(0xFF14171C),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                        decoration: InputDecoration(
+                          hintText: '문의 제목을 입력하세요',
+                          hintStyle: const TextStyle(
+                            color: Color(0xFFB0B6C0),
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          filled: true,
+                          fillColor: const Color(0xFFF7F8FA),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 14,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        '답변 받을 이메일',
+                        style: TextStyle(
+                          color: Color(0xFF7B8491),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _replyEmailController,
+                        keyboardType: TextInputType.emailAddress,
+                        style: const TextStyle(
+                          color: Color(0xFF14171C),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                        decoration: InputDecoration(
+                          hintText: '답변 받을 이메일을 입력하세요',
+                          hintStyle: const TextStyle(
+                            color: Color(0xFFB0B6C0),
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          filled: true,
+                          fillColor: const Color(0xFFF7F8FA),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 14,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        '내용',
+                        style: TextStyle(
+                          color: Color(0xFF7B8491),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _contentController,
+                        minLines: 10,
+                        maxLines: 14,
+                        style: const TextStyle(
+                          color: Color(0xFF14171C),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          height: 1.5,
+                        ),
+                        decoration: InputDecoration(
+                          hintText: '문의 내용을 입력하세요',
+                          hintStyle: const TextStyle(
+                            color: Color(0xFFB0B6C0),
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          filled: true,
+                          fillColor: const Color(0xFFF7F8FA),
+                          contentPadding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            decoration: const BoxDecoration(
+              color: Color(0xFFF7F8FA),
+              border: Border(
+                top: BorderSide(color: Color(0xFFE7EBF1)),
+              ),
+            ),
+            padding: EdgeInsets.fromLTRB(
+              16,
+              10,
+              16,
+              actionBarBottomPadding + actionBarBottomInset,
+            ),
+            child: SafeArea(
+              top: false,
+              bottom: applySystemBottomSafeArea,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: widget.onBack,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF343A44),
+                        side: const BorderSide(color: Color(0xFFD4DAE3)),
+                        minimumSize: const Size.fromHeight(44),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      child: const Text('취소'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: _saving ? null : _save,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFFFF6A5F),
+                        minimumSize: const Size.fromHeight(44),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      child: Text(_saving ? '저장 중...' : '등록하기'),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -3189,11 +3944,13 @@ class AssetPage extends StatelessWidget {
     super.key,
     required this.entries,
     required this.session,
+    required this.onOpenUpcomingExpenses,
     required this.onOpenFlowHistory,
   });
 
   final List<LedgerEntry> entries;
   final WalletKeeperUserSession? session;
+  final VoidCallback onOpenUpcomingExpenses;
   final VoidCallback onOpenFlowHistory;
 
   @override
@@ -3232,7 +3989,7 @@ class AssetPage extends StatelessWidget {
       color: const Color(0xFFF7F8FA),
       child: Column(
         children: [
-          const _RootTabHeader(title: '자산'),
+          const _RootTabHeader(title: '리포트'),
           Expanded(
             child: ListView(
               padding: EdgeInsets.fromLTRB(16, 10, 16, bottomInset + 24),
@@ -3242,8 +3999,8 @@ class AssetPage extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
-                        children: const [
-                          Text(
+                        children: [
+                          const Text(
                             '다가오는 지출',
                             style: TextStyle(
                               color: Color(0xFF14171C),
@@ -3251,20 +4008,28 @@ class AssetPage extends StatelessWidget {
                               fontWeight: FontWeight.w800,
                             ),
                           ),
-                          Spacer(),
-                          Text(
-                            '전체보기',
-                            style: TextStyle(
-                              color: Color(0xFF97A1AF),
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
+                          const Spacer(),
+                          GestureDetector(
+                            onTap: onOpenUpcomingExpenses,
+                            behavior: HitTestBehavior.opaque,
+                            child: const Row(
+                              children: [
+                                Text(
+                                  '전체보기',
+                                  style: TextStyle(
+                                    color: Color(0xFF97A1AF),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                SizedBox(width: 2),
+                                Icon(
+                                  Icons.chevron_right_rounded,
+                                  size: 18,
+                                  color: Color(0xFF97A1AF),
+                                ),
+                              ],
                             ),
-                          ),
-                          SizedBox(width: 2),
-                          Icon(
-                            Icons.chevron_right_rounded,
-                            size: 18,
-                            color: Color(0xFF97A1AF),
                           ),
                         ],
                       ),
@@ -3348,7 +4113,7 @@ class AssetPage extends StatelessWidget {
                       _AssetFlowMetricRow(
                         label: '수입',
                         color: const Color(0xFF68A9FF),
-                        amount: '+${_formatAssetAmount(summary.monthIncome)}',
+                        amount: '+${_formatAssetAmount(summary.monthIncome)}원',
                         amountColor: const Color(0xFF68A9FF),
                         ratio: incomeRatio.clamp(0.0, 1.0),
                       ),
@@ -3356,7 +4121,7 @@ class AssetPage extends StatelessWidget {
                       _AssetFlowMetricRow(
                         label: '지출',
                         color: const Color(0xFFFF6A5F),
-                        amount: '-${_formatAssetAmount(summary.monthExpense)}',
+                        amount: '-${_formatAssetAmount(summary.monthExpense)}원',
                         amountColor: const Color(0xFFFF6A5F),
                         ratio: expenseRatio.clamp(0.0, 1.0),
                       ),
@@ -3364,7 +4129,7 @@ class AssetPage extends StatelessWidget {
                       _AssetFlowMetricRow(
                         label: '남은금액',
                         color: const Color(0xFF29B15F),
-                        amount: '${summary.balance >= 0 ? '+' : '-'}${_formatAssetAmount(summary.balance.abs())}',
+                        amount: '${summary.balance >= 0 ? '+' : '-'}${_formatAssetAmount(summary.balance.abs())}원',
                         amountColor: summary.balance >= 0
                             ? const Color(0xFF29B15F)
                             : const Color(0xFFFF6A5F),
@@ -3557,6 +4322,58 @@ bool _looksLikeFixedExpense(LedgerEntry entry) {
   return fixedKeywords.any(combined.contains);
 }
 
+List<_StatsTrendPoint> _buildRecentTrendPoints(
+  List<LedgerEntry> entries, {
+  required EntryType type,
+  required _StatsRangeMode mode,
+  required DateTime anchorStart,
+}) {
+  return List.generate(6, (index) {
+    final shift = 5 - index;
+    late final DateTime periodStart;
+    late final DateTime periodEndExclusive;
+    late final String label;
+    switch (mode) {
+      case _StatsRangeMode.weekly:
+        periodStart = _StatsPageState._startOfWeek(
+          anchorStart.subtract(Duration(days: shift * 7)),
+        );
+        periodEndExclusive = periodStart.add(const Duration(days: 7));
+        label = DateFormat('M/d', 'ko_KR').format(periodStart);
+      case _StatsRangeMode.monthly:
+        periodStart = DateTime(anchorStart.year, anchorStart.month - shift, 1);
+        periodEndExclusive = DateTime(periodStart.year, periodStart.month + 1, 1);
+        label = DateFormat('M월', 'ko_KR').format(periodStart);
+      case _StatsRangeMode.yearly:
+        periodStart = DateTime(anchorStart.year - shift, 1, 1);
+        periodEndExclusive = DateTime(periodStart.year + 1, 1, 1);
+        label = DateFormat('yy년', 'ko_KR').format(periodStart);
+      case _StatsRangeMode.custom:
+        return _StatsTrendPoint(
+          periodStart: DateTime(1970),
+          amount: 0,
+          isCurrent: false,
+          label: '',
+        );
+    }
+
+    final amount = entries
+        .where(
+          (entry) =>
+              entry.type == type &&
+              !entry.date.isBefore(periodStart) &&
+              entry.date.isBefore(periodEndExclusive),
+        )
+        .fold<double>(0, (sum, entry) => sum + entry.amount);
+    return _StatsTrendPoint(
+      periodStart: periodStart,
+      amount: amount,
+      isCurrent: index == 5,
+      label: label,
+    );
+  }).where((point) => point.label.isNotEmpty).toList();
+}
+
 class AssetFlowHistoryPage extends StatelessWidget {
   const AssetFlowHistoryPage({
     super.key,
@@ -3569,6 +4386,7 @@ class AssetFlowHistoryPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bottomInset = bottomOverlayHeightOf(context);
     final recentFlow = List<LedgerEntry>.from(entries)
       ..sort((a, b) => b.date.compareTo(a.date));
 
@@ -3582,7 +4400,7 @@ class AssetFlowHistoryPage extends StatelessWidget {
           ),
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
+              padding: EdgeInsets.fromLTRB(16, 10, 16, bottomInset + 24),
               children: [
                 _AssetSoftCard(
                   child: recentFlow.isEmpty
@@ -3615,76 +4433,133 @@ class AssetFlowHistoryPage extends StatelessWidget {
   }
 }
 
-class PrivacyInfoPage extends StatelessWidget {
-  const PrivacyInfoPage({
+class AssetUpcomingExpensesPage extends StatelessWidget {
+  const AssetUpcomingExpensesPage({
     super.key,
+    required this.entries,
     required this.onBack,
   });
 
+  final List<LedgerEntry> entries;
   final VoidCallback onBack;
 
   @override
   Widget build(BuildContext context) {
+    final bottomInset = bottomOverlayHeightOf(context);
+    final now = DateTime.now();
+    final startOfToday = DateTime(now.year, now.month, now.day);
+    final upcoming = _buildUpcomingFixedExpenses(
+      entries,
+      now: now,
+      startOfToday: startOfToday,
+    );
+    final total = upcoming.fold<double>(0, (sum, entry) => sum + entry.amount);
+    final thisMonth = upcoming
+        .where(
+          (entry) =>
+              entry.date.year == now.year && entry.date.month == now.month,
+        )
+        .toList();
+    final nextDue = upcoming.isEmpty ? null : upcoming.first;
+
     return Container(
       color: const Color(0xFFF7F8FA),
       child: Column(
         children: [
-          _CompactPageHeader(title: '개인정보 및 저장 안내', onBack: onBack),
+          _CompactPageHeader(
+            title: '다가오는 지출',
+            onBack: onBack,
+          ),
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
+              padding: EdgeInsets.fromLTRB(16, 10, 16, bottomInset + 24),
               children: [
-                const _SettingsInfoCard(
-                  title: '서버 저장 방식',
-                  body:
-                      '지갑지켜는 기본적으로 비회원 사용자도 고유 시리얼 코드로 users 테이블에 먼저 생성하고, 이후 내역/메모/문자 설정 데이터를 해당 사용자에 묶어 저장합니다.',
-                ),
-                const SizedBox(height: 12),
-                const _SettingsInfoCard(
-                  title: '문자 분석 개선 데이터',
-                  body:
-                      '문자 분석 개선 데이터 제공을 켠 경우에만 감지된 금융 문자 원문을 암호화해 서버에 전송합니다. 이 데이터는 규칙 기반 파서 개선 목적으로만 사용됩니다.',
-                ),
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: const Color(0xFFE6EAF0)),
-                  ),
+                _AssetSoftCard(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        '개인정보처리방침 주소',
+                        '예정 지출 분석',
                         style: TextStyle(
                           color: Color(0xFF14171C),
-                          fontSize: 14,
+                          fontSize: 15,
                           fontWeight: FontWeight.w800,
                         ),
                       ),
-                      const SizedBox(height: 10),
-                      SelectableText(
-                        _walletKeeperPrivacyUri,
-                        style: const TextStyle(
-                          color: Color(0xFF5B6470),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
                       const SizedBox(height: 14),
-                      OutlinedButton(
-                        onPressed: () async {
-                          await Clipboard.setData(
-                            const ClipboardData(text: _walletKeeperPrivacyUri),
-                          );
-                          await showAppToast('주소를 복사했습니다.');
-                        },
-                        child: const Text('주소 복사'),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _AssetMiniSummary(
+                              label: '이번 달 예정',
+                              value: '${_formatAssetAmount(thisMonth.fold<double>(0, (sum, entry) => sum + entry.amount))}원',
+                              accent: const Color(0xFFFF6A5F),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: _AssetMiniSummary(
+                              label: '전체 예정',
+                              value: '${_formatAssetAmount(total)}원',
+                              accent: const Color(0xFF2F6BFF),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      _AssetInlineInfoRow(
+                        label: '건수',
+                        value: '${upcoming.length}건',
+                      ),
+                      const SizedBox(height: 8),
+                      _AssetInlineInfoRow(
+                        label: '가장 가까운 일정',
+                        value: nextDue == null
+                            ? '없음'
+                            : '${DateFormat('M월 d일').format(nextDue.date)} · ${nextDue.title}',
                       ),
                     ],
                   ),
+                ),
+                const SizedBox(height: 14),
+                _AssetSoftCard(
+                  child: upcoming.isEmpty
+                      ? const _AssetSimpleEmpty(
+                          title: '다가오는 지출이 없습니다.',
+                          subtitle: '고정지출 성격의 예정 내역이 생기면 이곳에 분석 형태로 표시됩니다.',
+                        )
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              '예정 내역',
+                              style: TextStyle(
+                                color: Color(0xFF14171C),
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            const SizedBox(height: 14),
+                            ...List.generate(upcoming.length, (index) {
+                              final entry = upcoming[index];
+                              final isProjected = entry.id.startsWith('projected:');
+                              return Column(
+                                children: [
+                                  _UpcomingExpenseAnalysisRow(
+                                    entry: entry,
+                                    isProjected: isProjected,
+                                  ),
+                                  if (index != upcoming.length - 1)
+                                    const Divider(
+                                      height: 20,
+                                      thickness: 1,
+                                      color: Color(0xFFE9EDF3),
+                                    ),
+                                ],
+                              );
+                            }),
+                          ],
+                        ),
                 ),
               ],
             ),
@@ -3693,6 +4568,287 @@ class PrivacyInfoPage extends StatelessWidget {
       ),
     );
   }
+}
+
+class TermsInfoPage extends StatefulWidget {
+  const TermsInfoPage({
+    super.key,
+    required this.onBack,
+  });
+
+  final VoidCallback onBack;
+
+  @override
+  State<TermsInfoPage> createState() => _TermsInfoPageState();
+}
+
+class _TermsInfoPageState extends State<TermsInfoPage> {
+  final WalletKeeperPolicyRepository _policyRepository =
+      WalletKeeperPolicyRepository();
+
+  bool _loading = false;
+  String? _loadingType;
+
+  Future<void> _openPolicyDialog(String type) async {
+    if (_loading) return;
+    setState(() {
+      _loading = true;
+      _loadingType = type;
+    });
+    try {
+      final document = await _policyRepository.fetchPolicy(
+        type: type,
+        localeTag: Localizations.localeOf(context).toLanguageTag(),
+      );
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _loadingType = null;
+      });
+      await showDialog<void>(
+        context: context,
+        builder: (context) => _PolicyDocumentDialog(document: document),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _loadingType = null;
+      });
+      await showAppToast(error.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = bottomOverlayHeightOf(context);
+    return Container(
+      color: const Color(0xFFF7F8FA),
+      child: Column(
+        children: [
+          _CompactPageHeader(title: '이용약관', onBack: widget.onBack),
+          Expanded(
+            child: ListView(
+              padding: EdgeInsets.fromLTRB(16, 10, 16, bottomInset + 24),
+              children: [
+                _PolicyActionTile(
+                  icon: Icons.description_outlined,
+                  title: '이용약관',
+                  subtitle: '지갑지켜 서비스 이용 조건과 책임 안내',
+                  loading: _loading && _loadingType == 'terms',
+                  onTap: () => _openPolicyDialog('terms'),
+                ),
+                const SizedBox(height: 12),
+                _PolicyActionTile(
+                  icon: Icons.privacy_tip_outlined,
+                  title: '개인정보처리방침',
+                  subtitle: '수집 정보, 보관 기간, 보호 조치 안내',
+                  loading: _loading && _loadingType == 'privacy',
+                  onTap: () => _openPolicyDialog('privacy'),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PolicyActionTile extends StatelessWidget {
+  const _PolicyActionTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+    this.loading = false,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        onTap: loading ? null : onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: const Color(0xFFE6EAF0)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF1EF),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(icon, color: const Color(0xFFE76158), size: 22),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: Color(0xFF14171C),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        color: Color(0xFF7B8491),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              loading
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Color(0xFFE76158),
+                      ),
+                    )
+                  : const Icon(
+                      Icons.chevron_right_rounded,
+                      size: 22,
+                      color: Color(0xFF9AA2AE),
+                    ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PolicyDocumentDialog extends StatelessWidget {
+  const _PolicyDocumentDialog({
+    required this.document,
+  });
+
+  final WalletKeeperPolicyDocument document;
+
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    return Dialog(
+      backgroundColor: Colors.white,
+      insetPadding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: 560,
+          maxHeight: size.height * 0.82,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 22, 12, 14),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          document.title,
+                          style: const TextStyle(
+                            color: Color(0xFF14171C),
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () => Navigator.of(context).pop(),
+                      borderRadius: BorderRadius.circular(999),
+                      child: const Padding(
+                        padding: EdgeInsets.all(8),
+                        child: Icon(
+                          Icons.close_rounded,
+                          size: 22,
+                          color: Color(0xFF6F7782),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1, color: Color(0xFFE9EDF3)),
+            Expanded(
+              child: Scrollbar(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+                  child: SelectableText(
+                    _policyHtmlToReadableText(document.content),
+                    style: const TextStyle(
+                      color: Color(0xFF1C2430),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      height: 1.7,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+String _policyHtmlToReadableText(String html) {
+  var text = html
+      .replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n')
+      .replaceAll(RegExp(r'</p>', caseSensitive: false), '\n\n')
+      .replaceAll(RegExp(r'</h[1-6]>', caseSensitive: false), '\n\n')
+      .replaceAll(RegExp(r'<li[^>]*>', caseSensitive: false), '• ')
+      .replaceAll(RegExp(r'</li>', caseSensitive: false), '\n')
+      .replaceAll(RegExp(r'</(ul|ol)>', caseSensitive: false), '\n')
+      .replaceAll(RegExp(r'<(div|section|table|tr)[^>]*>', caseSensitive: false), '\n')
+      .replaceAll(RegExp(r'</(div|section|table|tr|td|th)>', caseSensitive: false), '\n')
+      .replaceAll(RegExp(r'<[^>]+>'), '')
+      .replaceAll('&nbsp;', ' ')
+      .replaceAll('&amp;', '&')
+      .replaceAll('&lt;', '<')
+      .replaceAll('&gt;', '>')
+      .replaceAll('&quot;', '"');
+
+  text = text
+      .split('\n')
+      .map((line) => line.replaceAll(RegExp(r'\s+'), ' ').trimRight())
+      .join('\n');
+  text = text.replaceAll(RegExp(r'\n{3,}'), '\n\n');
+  return text.trim();
 }
 
 class MemoEditorPage extends StatefulWidget {
@@ -3945,6 +5101,17 @@ class _BudgetSettingsSheetState extends State<BudgetSettingsSheet> {
   bool _saving = false;
   int? _activeRowIndex;
 
+  List<String> get _budgetCategorySuggestions {
+    final seen = <String>{};
+    final values = <String>[];
+    for (final suggestion in widget.categorySuggestions) {
+      final trimmed = suggestion.trim();
+      if (trimmed.isEmpty || !seen.add(trimmed)) continue;
+      values.add(trimmed);
+    }
+    return values;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -3994,6 +5161,7 @@ class _BudgetSettingsSheetState extends State<BudgetSettingsSheet> {
     setState(() {
       _activeRowIndex = targetIndex;
     });
+    _rows[targetIndex].categoryFocusNode.requestFocus();
   }
 
   Future<void> _save() async {
@@ -4037,24 +5205,34 @@ class _BudgetSettingsSheetState extends State<BudgetSettingsSheet> {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
               children: [
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: widget.categorySuggestions.map((category) {
-                    return ActionChip(
-                      label: Text(
-                        category,
-                        style: const TextStyle(
-                          color: Color(0xFF374151),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
+                SizedBox(
+                  height: 48,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: _budgetCategorySuggestions.length,
+                    separatorBuilder: (context, index) => const SizedBox(width: 8),
+                    itemBuilder: (context, index) {
+                      final category = _budgetCategorySuggestions[index];
+                      return ActionChip(
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                        label: Text(
+                          category,
+                          style: const TextStyle(
+                            color: Color(0xFF374151),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
-                      ),
-                      backgroundColor: Colors.white,
-                      side: const BorderSide(color: Color(0xFFE5EAF1)),
-                      onPressed: () => _applySuggestion(category),
-                    );
-                  }).toList(),
+                        backgroundColor: Colors.white,
+                        side: const BorderSide(color: Color(0xFFE5EAF1)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        onPressed: () => _applySuggestion(category),
+                      );
+                    },
+                  ),
                 ),
                 const SizedBox(height: 14),
                 ..._rows.asMap().entries.map((entry) {
@@ -4072,19 +5250,97 @@ class _BudgetSettingsSheetState extends State<BudgetSettingsSheet> {
                       children: [
                         Expanded(
                           flex: 5,
-                          child: TextField(
-                            controller: row.categoryController,
-                            onTap: () => setState(() => _activeRowIndex = index),
-                            style: const TextStyle(
-                              color: Color(0xFF20242B),
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                            ),
-                            decoration: const InputDecoration(
-                              border: InputBorder.none,
-                              isDense: true,
-                              hintText: '분류 입력',
-                            ),
+                          child: RawAutocomplete<String>(
+                            textEditingController: row.categoryController,
+                            focusNode: row.categoryFocusNode,
+                            optionsViewOpenDirection: OptionsViewOpenDirection.up,
+                            optionsBuilder: (textEditingValue) {
+                              final query = textEditingValue.text.trim().toLowerCase();
+                              final source = _budgetCategorySuggestions;
+                              if (query.isEmpty) {
+                                return source.take(8);
+                              }
+                              return source.where(
+                                (item) => item.toLowerCase().contains(query),
+                              ).take(8);
+                            },
+                            onSelected: (value) {
+                              row.categoryController.text = value;
+                              setState(() => _activeRowIndex = index);
+                            },
+                            fieldViewBuilder:
+                                (context, controller, focusNode, onFieldSubmitted) {
+                              return TextField(
+                                controller: controller,
+                                focusNode: focusNode,
+                                onTap: () => setState(() => _activeRowIndex = index),
+                                onChanged: (_) => setState(() => _activeRowIndex = index),
+                                style: const TextStyle(
+                                  color: Color(0xFF20242B),
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                                decoration: const InputDecoration(
+                                  border: InputBorder.none,
+                                  isDense: true,
+                                  hintText: '분류 입력',
+                                ),
+                              );
+                            },
+                            optionsViewBuilder: (context, onSelected, options) {
+                              final list = options.toList(growable: false);
+                              if (list.isEmpty) {
+                                return const SizedBox.shrink();
+                              }
+                              final maxHeight = math.min(
+                                240.0,
+                                MediaQuery.sizeOf(context).height * 0.3,
+                              );
+                              return Align(
+                                alignment: Alignment.topLeft,
+                                child: Material(
+                                  color: Colors.white,
+                                  elevation: 10,
+                                  borderRadius: BorderRadius.circular(14),
+                                  child: Container(
+                                    width: 220,
+                                    constraints: BoxConstraints(maxHeight: maxHeight),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(14),
+                                      border: Border.all(color: const Color(0xFFE6EAF0)),
+                                    ),
+                                    child: ListView.separated(
+                                      padding: const EdgeInsets.symmetric(vertical: 6),
+                                      shrinkWrap: true,
+                                      itemCount: list.length,
+                                      separatorBuilder: (context, optionIndex) =>
+                                          const Divider(height: 1, color: Color(0xFFF0F3F7)),
+                                      itemBuilder: (context, optionIndex) {
+                                        final option = list[optionIndex];
+                                        return InkWell(
+                                          onTap: () => onSelected(option),
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 14,
+                                              vertical: 10,
+                                            ),
+                                            child: Text(
+                                              option,
+                                              style: const TextStyle(
+                                                color: Color(0xFF20242B),
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -4110,7 +5366,7 @@ class _BudgetSettingsSheetState extends State<BudgetSettingsSheet> {
                         ),
                         const SizedBox(width: 4),
                         IconButton(
-                          onPressed: _rows.length == 1 ? null : () => _removeRow(index),
+                          onPressed: () => _removeRow(index),
                           icon: const Icon(
                             Icons.delete_outline_rounded,
                             size: 20,
@@ -4169,6 +5425,7 @@ class _BudgetDraftRow {
     required this.id,
     required this.createdAt,
     required this.categoryController,
+    required this.categoryFocusNode,
     required this.amountController,
   });
 
@@ -4177,6 +5434,7 @@ class _BudgetDraftRow {
       id: DateTime.now().microsecondsSinceEpoch.toString(),
       createdAt: DateTime.now(),
       categoryController: TextEditingController(),
+      categoryFocusNode: FocusNode(),
       amountController: TextEditingController(),
     );
   }
@@ -4186,6 +5444,7 @@ class _BudgetDraftRow {
       id: budget.id,
       createdAt: budget.createdAt,
       categoryController: TextEditingController(text: budget.category),
+      categoryFocusNode: FocusNode(),
       amountController: TextEditingController(
         text: _ThousandsSeparatorInputFormatter.formatDigits(
           budget.amount.round().toString(),
@@ -4197,10 +5456,12 @@ class _BudgetDraftRow {
   final String id;
   final DateTime createdAt;
   final TextEditingController categoryController;
+  final FocusNode categoryFocusNode;
   final TextEditingController amountController;
 
   void dispose() {
     categoryController.dispose();
+    categoryFocusNode.dispose();
     amountController.dispose();
   }
 }
@@ -4210,6 +5471,7 @@ class _SocialLoginButtonTile extends StatelessWidget {
     required this.label,
     required this.provider,
     required this.active,
+    required this.loading,
     required this.backgroundColor,
     required this.foregroundColor,
     required this.borderColor,
@@ -4222,6 +5484,7 @@ class _SocialLoginButtonTile extends StatelessWidget {
   final String label;
   final String provider;
   final bool active;
+  final bool loading;
   final Color backgroundColor;
   final Color foregroundColor;
   final Color borderColor;
@@ -4236,7 +5499,7 @@ class _SocialLoginButtonTile extends StatelessWidget {
       width: double.infinity,
       height: 52,
       child: ElevatedButton(
-        onPressed: (!enabled || active) ? null : () => onTap(),
+        onPressed: (!enabled || active || loading) ? null : () => onTap(),
         style: ElevatedButton.styleFrom(
           backgroundColor: backgroundColor,
           foregroundColor: foregroundColor,
@@ -4254,16 +5517,31 @@ class _SocialLoginButtonTile extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Image.asset(
-              iconPath,
-              width: 20,
-              height: 20,
-              fit: BoxFit.contain,
-            ),
+            if (loading)
+              SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.2,
+                  valueColor: AlwaysStoppedAnimation<Color>(foregroundColor),
+                ),
+              )
+            else
+              Opacity(
+                opacity: enabled ? 1 : 0.42,
+                child: Image.asset(
+                  iconPath,
+                  width: 20,
+                  height: 20,
+                  fit: BoxFit.contain,
+                ),
+              ),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                !enabled
+                loading
+                    ? '로그인 중...'
+                    : !enabled
                     ? (disabledLabel ?? '$label (준비중)')
                     : active
                         ? '${_providerLabel(provider)} 연결됨'
@@ -4298,6 +5576,21 @@ String _providerLabel(String provider) {
       return '애플';
     default:
       return provider;
+  }
+}
+
+String _providerIconPath(String provider) {
+  switch (provider) {
+    case 'kakao':
+      return 'assets/icons/kakao_logo.png';
+    case 'google':
+      return 'assets/icons/google_logo.png';
+    case 'naver':
+      return 'assets/icons/naver_logo.png';
+    case 'apple':
+      return 'assets/icons/apple_logo.png';
+    default:
+      return '';
   }
 }
 
@@ -4401,6 +5694,354 @@ class _SettingsMenuTile extends StatelessWidget {
   }
 }
 
+class _InquiryListCard extends StatelessWidget {
+  const _InquiryListCard({
+    required this.inquiry,
+    required this.onTap,
+  });
+
+  final WalletKeeperInquiry inquiry;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final createdLabel = DateFormat('yyyy.MM.dd').format(inquiry.createdAt);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: const Color(0xFFE6EAF0)),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF1EE),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(
+                  Icons.edit_note_rounded,
+                  size: 20,
+                  color: Color(0xFFE76158),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        _InquiryStatusChip(
+                          status: inquiry.status,
+                          hasReply: inquiry.hasReply,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          createdLabel,
+                          style: const TextStyle(
+                            color: Color(0xFF9CA3AF),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      inquiry.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF14171C),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      inquiry.content,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF6F7782),
+                        fontSize: 12,
+                        height: 1.45,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Icon(
+                Icons.chevron_right_rounded,
+                size: 20,
+                color: Color(0xFF9BA3AF),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _InquiryStatusChip extends StatelessWidget {
+  const _InquiryStatusChip({
+    required this.status,
+    required this.hasReply,
+  });
+
+  final String status;
+  final bool hasReply;
+
+  @override
+  Widget build(BuildContext context) {
+    final resolved = hasReply || status == 'resolved' || status == 'closed';
+    final inProgress = status == 'in_progress';
+    final backgroundColor = resolved
+        ? const Color(0xFFECFDF5)
+        : inProgress
+            ? const Color(0xFFFFF7ED)
+            : const Color(0xFFEFF6FF);
+    final foregroundColor = resolved
+        ? const Color(0xFF16A34A)
+        : inProgress
+            ? const Color(0xFFEA580C)
+            : const Color(0xFF2563EB);
+    final label = resolved
+        ? '답변완료'
+        : inProgress
+            ? '처리중'
+            : '접수';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: foregroundColor,
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+}
+
+class _AssetMiniSummary extends StatelessWidget {
+  const _AssetMiniSummary({
+    required this.label,
+    required this.value,
+    required this.accent,
+  });
+
+  final String label;
+  final String value;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              color: Color(0xFF8D97A5),
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: accent,
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AssetInlineInfoRow extends StatelessWidget {
+  const _AssetInlineInfoRow({
+    required this.label,
+    required this.value,
+  });
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 84,
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: Color(0xFF8D97A5),
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            value,
+            textAlign: TextAlign.right,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Color(0xFF14171C),
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _UpcomingExpenseAnalysisRow extends StatelessWidget {
+  const _UpcomingExpenseAnalysisRow({
+    required this.entry,
+    required this.isProjected,
+  });
+
+  final LedgerEntry entry;
+  final bool isProjected;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = _assetAccentForCategory(entry.category, entry.type);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 46,
+          height: 46,
+          decoration: BoxDecoration(
+            color: accent.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(15),
+          ),
+          child: Icon(
+            _assetIconForCategory(entry.category),
+            size: 21,
+            color: accent,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      entry.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF14171C),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  if (isProjected) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFF1EE),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: const Text(
+                        '예상',
+                        style: TextStyle(
+                          color: Color(0xFFFF6A5F),
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '${DateFormat('M월 d일').format(entry.date)} · ${entry.category}',
+                style: const TextStyle(
+                  color: Color(0xFF8D97A5),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              if (entry.note.trim().isNotEmpty) ...[
+                const SizedBox(height: 5),
+                Text(
+                  entry.note.trim(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF7B8491),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(width: 10),
+        Text(
+          '-${_formatAssetAmount(entry.amount)}원',
+          style: const TextStyle(
+            color: Color(0xFFFF6A5F),
+            fontSize: 15,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _AssetSimpleEmpty extends StatelessWidget {
   const _AssetSimpleEmpty({
     required this.title,
@@ -4436,6 +6077,336 @@ class _AssetSimpleEmpty extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _StatsTrendPoint {
+  const _StatsTrendPoint({
+    required this.periodStart,
+    required this.amount,
+    required this.isCurrent,
+    required this.label,
+  });
+
+  final DateTime periodStart;
+  final double amount;
+  final bool isCurrent;
+  final String label;
+}
+
+class _AssetExpenseTrendCard extends StatelessWidget {
+  const _AssetExpenseTrendCard({
+    required this.points,
+    required this.delta,
+    required this.type,
+    required this.mode,
+  });
+
+  final List<_StatsTrendPoint> points;
+  final double delta;
+  final EntryType type;
+  final _StatsRangeMode mode;
+
+  @override
+  Widget build(BuildContext context) {
+    final isIncome = type == EntryType.income;
+    final accentColor = isIncome
+        ? (delta >= 0 ? const Color(0xFF56A0FF) : const Color(0xFFE76158))
+        : (delta > 0 ? const Color(0xFFE76158) : const Color(0xFF2F6BFF));
+    final periodWord = switch (mode) {
+      _StatsRangeMode.weekly => '지난주',
+      _StatsRangeMode.monthly => '지난달',
+      _StatsRangeMode.yearly => '작년',
+      _StatsRangeMode.custom => '이전 기간',
+    };
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7F8FA),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          RichText(
+            text: TextSpan(
+              style: const TextStyle(
+                color: Color(0xFF14171C),
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+              ),
+              children: delta == 0
+                  ? [
+                      TextSpan(
+                        text: isIncome
+                            ? '$periodWord과 같은 수준으로 들어오고 있어요'
+                            : '$periodWord과 같은 수준으로 쓰고 있어요',
+                      ),
+                    ]
+                  : [
+                      TextSpan(text: '$periodWord보다 '),
+                      TextSpan(
+                        text: '${_formatAssetAmount(delta.abs())}원',
+                        style: TextStyle(
+                          color: accentColor,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                          height: 1,
+                        ),
+                      ),
+                      TextSpan(
+                        text: isIncome
+                            ? (delta > 0 ? ' 더 들어오고 있어요' : ' 덜 들어오고 있어요')
+                            : (delta > 0 ? ' 더 쓰고 있어요' : ' 덜 쓰고 있어요'),
+                      ),
+                    ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          _AssetExpenseTrendChart(points: points, type: type),
+        ],
+      ),
+    );
+  }
+}
+
+double _assetTrendBarHeight(double amount, double maxAmount) {
+  if (amount <= 0) return 3.0;
+  const baseHeight = 18.0;
+  const extraHeight = 72.0;
+  final ratio = maxAmount <= 0 ? 0.0 : amount / maxAmount;
+  return baseHeight + (ratio * extraHeight);
+}
+
+class _AssetExpenseTrendChart extends StatefulWidget {
+  const _AssetExpenseTrendChart({
+    required this.points,
+    required this.type,
+  });
+
+  final List<_StatsTrendPoint> points;
+  final EntryType type;
+
+  @override
+  State<_AssetExpenseTrendChart> createState() => _AssetExpenseTrendChartState();
+}
+
+class _AssetExpenseTrendChartState extends State<_AssetExpenseTrendChart>
+    with SingleTickerProviderStateMixin {
+  int? _selectedIndex;
+  late final AnimationController _animationController;
+  late final Animation<double> _entranceAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedIndex = _defaultSelectedIndex(widget.points);
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 520),
+    );
+    _entranceAnimation = CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeOutCubic,
+    );
+    _animationController.addListener(() {
+      if (mounted) {
+        setState(() {});
+      }
+    });
+    _animationController.forward(from: 0);
+  }
+
+  @override
+  void didUpdateWidget(covariant _AssetExpenseTrendChart oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_didPointsChange(oldWidget.points, widget.points) || oldWidget.type != widget.type) {
+      _selectedIndex = _defaultSelectedIndex(widget.points);
+      _animationController.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  int _defaultSelectedIndex(List<_StatsTrendPoint> points) {
+    if (points.isEmpty) return 0;
+    final currentIndex = points.indexWhere((point) => point.isCurrent);
+    return currentIndex >= 0 ? currentIndex : points.length - 1;
+  }
+
+  bool _didPointsChange(List<_StatsTrendPoint> oldPoints, List<_StatsTrendPoint> newPoints) {
+    if (identical(oldPoints, newPoints)) return false;
+    if (oldPoints.length != newPoints.length) return true;
+    for (var i = 0; i < oldPoints.length; i++) {
+      final oldPoint = oldPoints[i];
+      final newPoint = newPoints[i];
+      if (oldPoint.periodStart != newPoint.periodStart ||
+          oldPoint.amount != newPoint.amount ||
+          oldPoint.isCurrent != newPoint.isCurrent ||
+          oldPoint.label != newPoint.label) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  void _selectIndex(int index) {
+    setState(() {
+      _selectedIndex = index;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final points = widget.points;
+    final maxAmount = points.fold<double>(
+      1,
+      (max, point) => math.max(max, point.amount),
+    );
+    const chartHeight = 138.0;
+    const bottomLabelSpace = 22.0;
+    return SizedBox(
+      height: chartHeight,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          const horizontalGap = 18.0;
+          final slotWidth = points.isEmpty ? constraints.maxWidth : constraints.maxWidth / points.length;
+          final chartBottom = chartHeight - bottomLabelSpace - 8;
+          final selectedIndex =
+              _selectedIndex != null && _selectedIndex! >= 0 && _selectedIndex! < points.length
+                  ? _selectedIndex!
+                  : null;
+          final selectedPoint =
+              selectedIndex != null
+                  ? points[selectedIndex]
+                  : null;
+          final selectedBarHeight = selectedPoint == null
+              ? 0.0
+              : _assetTrendBarHeight(selectedPoint.amount, maxAmount) * _entranceAnimation.value;
+          final selectedX = selectedPoint == null
+              ? 0.0
+              : (slotWidth * selectedIndex!) + (slotWidth / 2);
+          final selectedY = selectedPoint == null ? 0.0 : chartBottom - selectedBarHeight;
+          final selectedPointerY = selectedPoint == null ? 0.0 : selectedY;
+          const labelWidth = 108.0;
+          const edgeLabelOverflow = 18.0;
+          final labelLeft = selectedPoint == null
+              ? 0.0
+              : selectedIndex == 0
+                  ? -edgeLabelOverflow
+                  : selectedIndex == points.length - 1
+                      ? constraints.maxWidth - labelWidth + edgeLabelOverflow
+                      : (selectedX - (labelWidth / 2)).clamp(
+                          0.0,
+                          math.max(0.0, constraints.maxWidth - labelWidth),
+                        ).toDouble();
+          return Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: List.generate(points.length, (index) {
+                  final point = points[index];
+                  final isSelected = selectedIndex == index;
+                  final dimmed = selectedPoint != null && !isSelected;
+                  final barHeight =
+                      _assetTrendBarHeight(point.amount, maxAmount) * _entranceAnimation.value;
+                  final color = point.isCurrent
+                      ? (widget.type == EntryType.income
+                          ? const Color(0xFF56A0FF)
+                          : const Color(0xFFFF695D))
+                      : const Color(0xFFD6DAE1);
+                  return Expanded(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => _selectIndex(index),
+                      child: AnimatedOpacity(
+                        duration: const Duration(milliseconds: 180),
+                        curve: Curves.easeOutCubic,
+                        opacity: dimmed ? 0.42 : 1,
+                        child: ImageFiltered(
+                          imageFilter: dimmed
+                              ? ImageFilter.blur(sigmaX: 0.75, sigmaY: 0.75)
+                              : ImageFilter.blur(sigmaX: 0, sigmaY: 0),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              const Spacer(),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: horizontalGap / 2),
+                                child: SizedBox(
+                                  width: double.infinity,
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 180),
+                                    curve: Curves.easeOutCubic,
+                                    height: barHeight,
+                                    decoration: BoxDecoration(
+                                      color: color,
+                                      borderRadius: BorderRadius.circular(9),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                point.label,
+                                style: TextStyle(
+                              color: point.isCurrent
+                                  ? (widget.type == EntryType.income
+                                      ? const Color(0xFF56A0FF)
+                                      : const Color(0xFFFF695D))
+                                  : const Color(0xFF9AA3AF),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              ),
+              if (selectedPoint != null)
+                AnimatedPositioned(
+                  duration: const Duration(milliseconds: 180),
+                  curve: Curves.easeOutCubic,
+                  left: labelLeft,
+                  top: math.max(0.0, selectedPointerY - 48),
+                  width: labelWidth,
+                  child: FadeTransition(
+                    opacity: _entranceAnimation,
+                    child: IgnorePointer(
+                      child: Center(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            '${_formatAssetAmount(selectedPoint.amount)}원',
+                            style: TextStyle(
+                              color: selectedPoint.isCurrent
+                                  ? (widget.type == EntryType.income
+                                      ? const Color(0xFF56A0FF)
+                                      : const Color(0xFFFF695D))
+                                  : const Color(0xFF7B8491),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -4523,7 +6494,7 @@ class _UpcomingExpenseRow extends StatelessWidget {
         ),
         const SizedBox(width: 10),
           Text(
-            _formatAssetAmount(entry.amount),
+            '${_formatAssetAmount(entry.amount)}원',
           style: TextStyle(
             color: entry.type == EntryType.expense
                 ? const Color(0xFFFF6A5F)
@@ -4676,7 +6647,7 @@ class _RecentAssetFlowRow extends StatelessWidget {
         ),
         const SizedBox(width: 10),
           Text(
-            '$prefix${_formatAssetAmount(entry.amount)}',
+            '$prefix${_formatAssetAmount(entry.amount)}원',
             style: TextStyle(
               color: entry.type == EntryType.expense
                   ? const Color(0xFFFF6A5F)
@@ -4691,7 +6662,7 @@ class _RecentAssetFlowRow extends StatelessWidget {
 }
 
 String _formatAssetAmount(double amount) {
-  return '${formatCurrency(amount).replaceAll('₩', '').trim()}원';
+  return formatCurrency(amount).replaceAll('₩', '').replaceAll('원', '').trim();
 }
 
 Color _assetAccentForCategory(String category, EntryType type) {
@@ -5347,6 +7318,149 @@ class _SettingsInfoCard extends StatelessWidget {
               height: 1.5,
               fontWeight: FontWeight.w600,
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileMemberIdCard extends StatelessWidget {
+  const _ProfileMemberIdCard({required this.userId});
+
+  final String userId;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE6EAF0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '회원 ID',
+            style: TextStyle(
+              color: Color(0xFF7B8491),
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            userId,
+            style: const TextStyle(
+              color: Color(0xFF14171C),
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () async {
+              await Clipboard.setData(ClipboardData(text: userId));
+              await showAppToast('회원 ID를 복사했습니다.');
+            },
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.content_copy_rounded,
+                  size: 15,
+                  color: Color(0xFF7B8491),
+                ),
+                SizedBox(width: 4),
+                Text(
+                  '복사하기',
+                  style: TextStyle(
+                    color: Color(0xFF7B8491),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileLinkedProviderCard extends StatelessWidget {
+  const _ProfileLinkedProviderCard({required this.account});
+
+  final WalletKeeperUserSession account;
+
+  @override
+  Widget build(BuildContext context) {
+    final iconPath = _providerIconPath(account.loginType);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE6EAF0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '연결된 소셜계정',
+            style: TextStyle(
+              color: Color(0xFF7B8491),
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              SizedBox(
+                width: 28,
+                height: 28,
+                child: iconPath.isEmpty
+                    ? const Icon(
+                        Icons.person_rounded,
+                        size: 16,
+                        color: Color(0xFF7B8491),
+                      )
+                    : Image.asset(
+                        iconPath,
+                        fit: BoxFit.contain,
+                      ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '로그인 방법',
+                      style: TextStyle(
+                        color: Color(0xFF7B8491),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${account.providerLabel} 연결됨',
+                      style: const TextStyle(
+                        color: Color(0xFF14171C),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),
