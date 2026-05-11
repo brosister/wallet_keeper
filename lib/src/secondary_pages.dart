@@ -3152,6 +3152,7 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
+  static const bool _showNaverLoginButton = false;
   String? _loadingProvider;
 
   Future<void> _runProviderAction(
@@ -3250,7 +3251,8 @@ class _SettingsPageState extends State<SettingsPage> {
                               widget.onSignInWithKakao,
                             ),
                           ),
-                        if (linkedProvider == null || linkedProvider == 'naver') ...[
+                        if (_showNaverLoginButton &&
+                            (linkedProvider == null || linkedProvider == 'naver')) ...[
                           const SizedBox(height: 10),
                           _SocialLoginButtonTile(
                             label: '네이버로 시작하기',
@@ -5495,69 +5497,73 @@ class _SocialLoginButtonTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      height: 52,
-      child: ElevatedButton(
-        onPressed: (!enabled || active || loading) ? null : () => onTap(),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: backgroundColor,
-          foregroundColor: foregroundColor,
-          disabledBackgroundColor: backgroundColor,
-          disabledForegroundColor: foregroundColor,
-          elevation: 0,
-          shadowColor: Colors.transparent,
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-            side: borderColor == Colors.transparent
-                ? BorderSide.none
-                : BorderSide(color: borderColor, width: 1),
-          ),
-        ),
-        child: Row(
-          children: [
-            if (loading)
-              SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.2,
-                  valueColor: AlwaysStoppedAnimation<Color>(foregroundColor),
-                ),
-              )
-            else
-              Opacity(
-                opacity: enabled ? 1 : 0.42,
-                child: Image.asset(
-                  iconPath,
-                  width: 20,
-                  height: 20,
-                  fit: BoxFit.contain,
-                ),
-              ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                loading
-                    ? '로그인 중...'
-                    : !enabled
-                    ? (disabledLabel ?? '$label (준비중)')
-                    : active
-                        ? '${_providerLabel(provider)} 연결됨'
-                        : label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: foregroundColor,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                ),
+    final bool isDisabled = !enabled;
+    final bool blockInteraction = !enabled || active || loading;
+    final double visualOpacity = isDisabled ? 0.52 : 1;
+    return Opacity(
+      opacity: visualOpacity,
+      child: IgnorePointer(
+        ignoring: blockInteraction,
+        child: SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: ElevatedButton(
+            onPressed: () => onTap(),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: backgroundColor,
+              foregroundColor: foregroundColor,
+              elevation: 0,
+              shadowColor: Colors.transparent,
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+                side: borderColor == Colors.transparent
+                    ? BorderSide.none
+                    : BorderSide(color: borderColor, width: 1),
               ),
             ),
-            const SizedBox(width: 28),
-          ],
+            child: Row(
+              children: [
+                if (loading)
+                  SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.2,
+                      valueColor: AlwaysStoppedAnimation<Color>(foregroundColor),
+                    ),
+                  )
+                else
+                  Image.asset(
+                    iconPath,
+                    width: 20,
+                    height: 20,
+                    fit: BoxFit.contain,
+                  ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    loading
+                        ? '로그인 중...'
+                        : !enabled
+                            ? (disabledLabel ?? '$label (준비중)')
+                            : active
+                                ? '${_providerLabel(provider)} 연결됨'
+                                : label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: foregroundColor,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 28),
+              ],
+            ),
+          ),
         ),
       ),
     );
