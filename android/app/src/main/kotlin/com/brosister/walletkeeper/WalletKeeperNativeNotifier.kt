@@ -44,10 +44,10 @@ object WalletKeeperNativeNotifier {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_stat_wallet_keeper_white)
+            .setSmallIcon(R.drawable.push_small_icon)
             .setContentTitle(title)
             .setContentText(amountText)
-            .setColor(0xFFE76158.toInt())
+            .setColor(0xFFEB4D4B.toInt())
             .setColorized(true)
             .setWhen(timestampMillis)
             .setShowWhen(true)
