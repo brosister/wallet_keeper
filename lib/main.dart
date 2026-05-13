@@ -411,7 +411,7 @@ class WalletKeeperCustomSplashScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Scaffold(
-      backgroundColor: Color(0xFFE76158),
+      backgroundColor: Color(0xFFEA4D4A),
       body: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -457,6 +457,9 @@ class WalletKeeperBootstrap extends StatefulWidget {
 class _WalletKeeperBootstrapState extends State<WalletKeeperBootstrap> {
   final WalletKeeperSettingsRepository _settingsRepository =
       WalletKeeperSettingsRepository();
+  final WalletKeeperNotificationAccessRepository
+      _notificationAccessRepository =
+      const WalletKeeperNotificationAccessRepository();
   late WalletKeeperFeatureAccess _featureAccess;
   bool _requestingPermissions = false;
   bool _versionNoticeShown = false;
@@ -566,9 +569,19 @@ class _WalletKeeperBootstrapState extends State<WalletKeeperBootstrap> {
         final access = await _settingsRepository.requestFeatureAccess();
         if (!mounted) return;
         setState(() => _featureAccess = access);
-      if (!access.hasRequiredPermissionAccess) {
-        await showAppToast('권한 허용이 필요해요.');
-      }
+        if (!access.hasRequiredPermissionAccess) {
+          await showAppToast('권한 허용이 필요해요.');
+        }
+        if (Platform.isAndroid) {
+          final opened = await _notificationAccessRepository
+              .openFinancialAppNotificationSettings();
+          if (!mounted) return;
+          await showAppToast(
+            opened
+                ? '금융 앱 알림 감지를 위해 알림 접근을 허용해주세요.'
+                : '알림 접근 설정을 열 수 없습니다.',
+          );
+        }
     } catch (error, stackTrace) {
       debugPrint('Failed to request feature access: $error');
       debugPrintStack(stackTrace: stackTrace);

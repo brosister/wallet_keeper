@@ -531,7 +531,7 @@ class _OverviewSummaryStrip extends StatelessWidget {
               child: _OverviewSummaryCell(
                 label: '수입',
                 value: income,
-                formatter: (value) => value == 0
+                formatter: (value) => value.round() == 0
                     ? '0'
                     : '+${_compactDailyAmount(value)}',
                 color: const Color(0xFF56A0FF),
@@ -541,7 +541,7 @@ class _OverviewSummaryStrip extends StatelessWidget {
               child: _OverviewSummaryCell(
                 label: '지출',
                 value: expense,
-                formatter: (value) => value == 0
+                formatter: (value) => value.round() == 0
                     ? '0'
                     : '-${_compactDailyAmount(value)}',
                 color: const Color(0xFFFF6A5F),
@@ -551,7 +551,9 @@ class _OverviewSummaryStrip extends StatelessWidget {
               child: _OverviewSummaryCell(
                 label: '남은금액',
                 value: total,
-                formatter: (value) => value <= 0
+                formatter: (value) => value.round() == 0
+                    ? '0'
+                    : value < 0
                     ? '-${_compactDailyAmount(value.abs())}'
                     : '+${_compactDailyAmount(value)}',
                 color: total < 0 ? const Color(0xFFFF6A5F) : const Color(0xFF56A0FF),
@@ -1058,14 +1060,16 @@ class _CalendarLedgerTabState extends State<_CalendarLedgerTab> {
                   child: Column(
                     children: [
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 1),
+                          width: 30,
+                          height: 30,
+                          alignment: Alignment.center,
                           decoration: BoxDecoration(
                             color: isSelected
                                 ? const Color(0xFFE76158)
                                 : isToday
                                     ? const Color(0xFFF3F4F7)
                                     : Colors.transparent,
-                            borderRadius: BorderRadius.circular(14),
+                            borderRadius: BorderRadius.circular(15),
                           ),
                           child: Text(
                             '${day.day}',
@@ -1664,19 +1668,19 @@ class _MonthlyMetricsRow extends StatelessWidget {
       children: [
         _LedgerDayMetric(
           label: '수입',
-          value: income == 0 ? '0' : '+${_compactDailyAmount(income)}',
+          value: income.round() == 0 ? '0' : '+${_compactDailyAmount(income)}',
           color: const Color(0xFF56A0FF),
         ),
         const SizedBox(width: 14),
         _LedgerDayMetric(
           label: '지출',
-          value: expense == 0 ? '0' : '-${_compactDailyAmount(expense)}',
+          value: expense.round() == 0 ? '0' : '-${_compactDailyAmount(expense)}',
           color: const Color(0xFFFF7A70),
         ),
         const SizedBox(width: 14),
         _LedgerDayMetric(
           label: '남은금액',
-          value: total == 0
+          value: total.round() == 0
               ? '0'
               : total < 0
                   ? '-${_compactDailyAmount(total.abs())}'
@@ -2096,19 +2100,19 @@ class _LedgerDayHeader extends StatelessWidget {
                 children: [
                   _LedgerDayMetric(
                     label: '수입',
-                    value: income > 0 ? '+${_compactDailyAmount(income)}' : '0',
+                    value: income.round() == 0 ? '0' : '+${_compactDailyAmount(income)}',
                     color: const Color(0xFF56A0FF),
                   ),
                   const SizedBox(width: 14),
                   _LedgerDayMetric(
                     label: '지출',
-                    value: expense > 0 ? '-${_compactDailyAmount(expense)}' : '0',
+                    value: expense.round() == 0 ? '0' : '-${_compactDailyAmount(expense)}',
                     color: const Color(0xFFFF695D),
                   ),
                   const SizedBox(width: 14),
                   _LedgerDayMetric(
                     label: '남은금액',
-                    value: total == 0
+                    value: total.round() == 0
                         ? '0'
                         : total > 0
                             ? '+${_compactDailyAmount(total)}'
