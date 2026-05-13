@@ -133,6 +133,7 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
   bool _financialAppNotificationEnabled = false;
   int _selectedOverviewTab = 0;
   int _overviewResetNonce = 0;
+  double _bottomBannerHeight = 0;
   final List<_ShellRoute> _routeStack = [const _ShellRoute.root()];
   final GlobalKey<_EntryEditorPageState> _editorPageKey = GlobalKey<_EntryEditorPageState>();
   final GlobalKey<_InquiryComposePageState> _inquiryComposePageKey =
@@ -1025,8 +1026,11 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
         _currentRoute.kind == _ShellRouteKind.assetUpcomingHistory ||
         _currentRoute.kind == _ShellRouteKind.assetFlowHistory;
     final bottomOverlayHeight = showBottomBar
-        ? _walletKeeperBottomNavSectionHeight + MediaQuery.paddingOf(context).bottom
+        ? _walletKeeperBottomNavSectionHeight +
+            MediaQuery.paddingOf(context).bottom +
+            _bottomBannerHeight
         : 0.0;
+    final systemBottomInset = MediaQuery.paddingOf(context).bottom;
 
     Widget page;
     switch (_currentRoute.kind) {
@@ -1213,15 +1217,34 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
                 if (showBottomBar)
                   Align(
                     alignment: Alignment.bottomCenter,
-                    child: SafeArea(
-                      top: false,
-                      child: Material(
-                        color: Colors.transparent,
-                        child: WalletKeeperBottomBar(
-                          selectedIndex: _selectedTab,
-                          onAdd: () => _openComposer(),
-                          onSelected: _closeEditorAndSelectTab,
-                        ),
+                    child: Material(
+                      color: Colors.transparent,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          WalletKeeperBottomBar(
+                            selectedIndex: _selectedTab,
+                            onAdd: () => _openComposer(),
+                            onSelected: _closeEditorAndSelectTab,
+                          ),
+                          WalletKeeperAdBannerBar(
+                            onHeightChanged: (height) {
+                              if ((_bottomBannerHeight - height).abs() < 0.5) {
+                                return;
+                              }
+                              if (!mounted) return;
+                              setState(() {
+                                _bottomBannerHeight = height;
+                              });
+                            },
+                          ),
+                          if (systemBottomInset > 0)
+                            Container(
+                              width: double.infinity,
+                              height: systemBottomInset,
+                              color: Colors.white,
+                            ),
+                        ],
                       ),
                     ),
                   ),

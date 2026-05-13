@@ -27,7 +27,7 @@
         </activity>
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="ca-app-pub-3940256099942544~3347511713" />
+            android:value="ca-app-pub-1472588829285826~9460928364" />
         <meta-data
             android:name="com.kakao.sdk.AppKey"
             android:value="e0888b88d12ae3a234b022db1d2c723e" />
