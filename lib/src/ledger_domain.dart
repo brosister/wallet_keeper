@@ -114,7 +114,7 @@ class WalletKeeperSettingsRepository {
     final smsGranted = Platform.isAndroid
         ? await Permission.sms.isGranted
         : false;
-    final notificationGranted = Platform.isAndroid
+    final notificationGranted = (Platform.isAndroid || Platform.isIOS)
         ? await _resolveNotificationPermission(storedNotification)
         : false;
     final access = WalletKeeperFeatureAccess(
@@ -127,6 +127,37 @@ class WalletKeeperSettingsRepository {
   }
 
   Future<WalletKeeperFeatureAccess> requestFeatureAccess() async {
+    if (Platform.isIOS) {
+      final notificationCurrentStatus = await Permission.notification.status;
+      final shouldOpenSettingsForNotification =
+          notificationCurrentStatus.isPermanentlyDenied ||
+          notificationCurrentStatus.isRestricted;
+      PermissionStatus notificationStatus;
+      try {
+        if (shouldOpenSettingsForNotification) {
+          notificationStatus = notificationCurrentStatus;
+        } else {
+          notificationStatus = await Permission.notification.request();
+        }
+      } on PlatformException catch (error) {
+        if (error.code != 'permission_denied') rethrow;
+        notificationStatus = PermissionStatus.denied;
+      }
+
+      if (shouldOpenSettingsForNotification) {
+        await openAppSettings();
+      }
+
+      final access = WalletKeeperFeatureAccess(
+        onboardingSeen: true,
+        smsGranted: false,
+        notificationGranted:
+            notificationStatus.isGranted || notificationStatus.isLimited,
+      );
+      await saveFeatureAccess(access);
+      return access;
+    }
+
     if (!Platform.isAndroid) {
       const access = WalletKeeperFeatureAccess(
         onboardingSeen: true,

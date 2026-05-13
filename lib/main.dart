@@ -45,6 +45,8 @@ const _walletKeeperAuthBaseUri = 'https://app-master.officialsite.kr/api/wallet-
 const _smsOnboardingSeenKey = 'wallet_keeper_sms_onboarding_seen_v1';
 const _smsPermissionGrantedKey = 'wallet_keeper_sms_permission_granted_v1';
 const _notificationPermissionGrantedKey = 'wallet_keeper_notification_permission_granted_v1';
+const _iosNotificationAutoPromptedKey =
+    'wallet_keeper_ios_notification_auto_prompted_v1';
 const _processedSmsIdsKey = 'wallet_keeper_processed_sms_ids_v1';
 const _smsInboxDraftsKey = 'wallet_keeper_sms_inbox_drafts_v1';
 const _smsReceiveEnabledKey = 'wallet_keeper_sms_receive_enabled_v1';
@@ -463,9 +465,29 @@ class _WalletKeeperBootstrapState extends State<WalletKeeperBootstrap> {
   void initState() {
     super.initState();
     _featureAccess = widget.initialFeatureAccess;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _showVersionNoticeIfNeeded();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _requestIosNotificationPermissionOnFirstLaunchIfNeeded();
+      await _showVersionNoticeIfNeeded();
     });
+  }
+
+  Future<void> _requestIosNotificationPermissionOnFirstLaunchIfNeeded() async {
+    if (!Platform.isIOS) return;
+    final prefs = await SharedPreferences.getInstance();
+    final alreadyPrompted = prefs.getBool(_iosNotificationAutoPromptedKey) ?? false;
+    if (alreadyPrompted) return;
+    await prefs.setBool(_iosNotificationAutoPromptedKey, true);
+    try {
+      final access = await _settingsRepository.requestFeatureAccess();
+      if (!mounted) return;
+      setState(() => _featureAccess = access);
+    } catch (error, stackTrace) {
+      debugPrint('Failed to auto request iOS notification permission: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      final access = await _settingsRepository.loadFeatureAccess();
+      if (!mounted) return;
+      setState(() => _featureAccess = access);
+    }
   }
 
   Future<void> _showVersionNoticeIfNeeded() async {

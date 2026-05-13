@@ -1549,6 +1549,7 @@ class _SmsInboxPageState extends State<SmsInboxPage> {
 
   @override
   Widget build(BuildContext context) {
+    final showSmsSettingsEntry = Platform.isAndroid;
     final bottomInset = bottomOverlayHeightOf(context);
     final actionBarBottomInset = math.max(0.0, bottomInset - 38);
     final applySystemBottomSafeArea = bottomInset == 0;
@@ -1584,12 +1585,14 @@ class _SmsInboxPageState extends State<SmsInboxPage> {
                           });
                         },
                 ),
-                const SizedBox(width: 4),
-                _CompactHeaderButton(
-                  icon: Icons.settings_outlined,
-                  iconSize: 27,
-                  onTap: widget.onOpenSettingsPage,
-                ),
+                if (showSmsSettingsEntry) ...[
+                  const SizedBox(width: 4),
+                  _CompactHeaderButton(
+                    icon: Icons.settings_outlined,
+                    iconSize: 27,
+                    onTap: widget.onOpenSettingsPage,
+                  ),
+                ],
               ],
             ),
             Expanded(
@@ -2013,6 +2016,7 @@ class SmsSettingsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final showFinancialAppNotificationSetting = !Platform.isIOS;
     return Container(
       color: const Color(0xFFF7F8FA),
       child: Column(
@@ -2030,13 +2034,14 @@ class SmsSettingsPage extends StatelessWidget {
                   value: settings.smsReceiveEnabled,
                   onChanged: (value) => onChanged(settings.copyWith(smsReceiveEnabled: value)),
                 ),
-                _SettingsSwitchRow(
-                  title: '금융 어플 알림 설정',
-                  value: financialAppNotificationEnabled,
-                  highlighted: !financialAppNotificationEnabled,
-                  emphasisLabel: !financialAppNotificationEnabled ? '알림 접근 권한 필요' : null,
-                  onChanged: (_) => onOpenFinancialAppNotificationSettings(),
-                ),
+                if (showFinancialAppNotificationSetting)
+                  _SettingsSwitchRow(
+                    title: '금융 어플 알림 설정',
+                    value: financialAppNotificationEnabled,
+                    highlighted: !financialAppNotificationEnabled,
+                    emphasisLabel: !financialAppNotificationEnabled ? '알림 접근 권한 필요' : null,
+                    onChanged: (_) => onOpenFinancialAppNotificationSettings(),
+                  ),
                 const _SettingsSectionTitle('문자설정'),
                 _SettingsSwitchRow(
                   title: '문자 자동 입력 기능',
@@ -3175,6 +3180,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final bottomInset = bottomOverlayHeightOf(context);
     final account = widget.session;
     final isApplePlatform = Platform.isIOS || Platform.isMacOS;
+    final showSmsSettingsEntry = Platform.isAndroid;
     final linkedLabel = account == null || account.isGuest
         ? '비회원'
         : '${account.providerLabel} 연결됨';
@@ -3355,12 +3361,13 @@ class _SettingsPageState extends State<SettingsPage> {
                 _SettingsMenuSection(
                   title: '설정',
                   children: [
-                    _SettingsMenuTile(
-                      icon: Icons.sms_outlined,
-                      title: '문자 설정',
-                      subtitle: widget.smsSettings.smsReceiveEnabled ? '문자 감지 사용 중' : '문자 감지 꺼짐',
-                      onTap: widget.onOpenSmsSettings,
-                    ),
+                    if (showSmsSettingsEntry)
+                      _SettingsMenuTile(
+                        icon: Icons.sms_outlined,
+                        title: '문자 설정',
+                        subtitle: widget.smsSettings.smsReceiveEnabled ? '문자 감지 사용 중' : '문자 감지 꺼짐',
+                        onTap: widget.onOpenSmsSettings,
+                      ),
                     _SettingsMenuTile(
                       icon: Icons.support_agent_rounded,
                       title: '문의',
