@@ -39,12 +39,16 @@ const _storageKey = 'wallet_keeper_entries_v1';
 const _memoStorageKey = 'wallet_keeper_memos_v1';
 const _budgetStorageKey = 'wallet_keeper_budgets_v1';
 const _walletKeeperBottomNavSectionHeight = 112.0;
-const _walletKeeperAdSettingsUri = 'https://app-master.officialsite.kr/api/wallet-keeper/ad-settings';
-const _walletKeeperSmsReportUri = 'https://app-master.officialsite.kr/api/wallet-keeper/sms-reports';
-const _walletKeeperAuthBaseUri = 'https://app-master.officialsite.kr/api/wallet-keeper';
+const _walletKeeperAdSettingsUri =
+    'https://app-master.officialsite.kr/api/wallet-keeper/ad-settings';
+const _walletKeeperSmsReportUri =
+    'https://app-master.officialsite.kr/api/wallet-keeper/sms-reports';
+const _walletKeeperAuthBaseUri =
+    'https://app-master.officialsite.kr/api/wallet-keeper';
 const _smsOnboardingSeenKey = 'wallet_keeper_sms_onboarding_seen_v1';
 const _smsPermissionGrantedKey = 'wallet_keeper_sms_permission_granted_v1';
-const _notificationPermissionGrantedKey = 'wallet_keeper_notification_permission_granted_v1';
+const _notificationPermissionGrantedKey =
+    'wallet_keeper_notification_permission_granted_v1';
 const _iosNotificationAutoPromptedKey =
     'wallet_keeper_ios_notification_auto_prompted_v1';
 const _processedSmsIdsKey = 'wallet_keeper_processed_sms_ids_v1';
@@ -69,8 +73,12 @@ const _walletKeeperNaverClientSecret = '';
 const _walletKeeperNaverClientName = '지갑지켜';
 const _mmsReaderChannel = MethodChannel('wallet_keeper/mms_reader');
 const _mmsRouteChannel = MethodChannel('wallet_keeper/mms_route');
-const _nativeNotificationChannel = MethodChannel('wallet_keeper/native_notifications');
-const _notificationAccessChannel = MethodChannel('wallet_keeper/notification_access');
+const _nativeNotificationChannel = MethodChannel(
+  'wallet_keeper/native_notifications',
+);
+const _notificationAccessChannel = MethodChannel(
+  'wallet_keeper/notification_access',
+);
 const _deviceInfoChannel = MethodChannel(
   'com.brosister.walletkeeper/device_info',
 );
@@ -96,13 +104,17 @@ Future<void> _initializeLocalNotifications() async {
       }
     },
   );
-  final launchDetails = await _localNotifications.getNotificationAppLaunchDetails();
+  final launchDetails = await _localNotifications
+      .getNotificationAppLaunchDetails();
   if (launchDetails?.didNotificationLaunchApp == true &&
-      launchDetails?.notificationResponse?.payload == _smsInboxNotificationPayload) {
+      launchDetails?.notificationResponse?.payload ==
+          _smsInboxNotificationPayload) {
     _pendingNotificationLaunchToSmsInbox = true;
   }
   final androidPlugin = _localNotifications
-      .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+      .resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin
+      >();
   await androidPlugin?.createNotificationChannel(
     const AndroidNotificationChannel(
       _smsNotificationChannelId,
@@ -121,10 +133,11 @@ Future<void> walletKeeperBackgroundMessageHandler(SmsMessage message) async {
   final settings = await WalletKeeperSmsSettingsRepository().load();
   if (!access.smsGranted || !settings.smsReceiveEnabled) return;
   await _initializeLocalNotifications();
-  final result = await WalletKeeperSmsAutomationRepository().handleIncomingMessage(
-    message,
-    autoSaveToLedger: settings.autoInputEnabled,
-  );
+  final result = await WalletKeeperSmsAutomationRepository()
+      .handleIncomingMessage(
+        message,
+        autoSaveToLedger: settings.autoInputEnabled,
+      );
   if (result == null || !settings.showNotification) return;
   await WalletKeeperNotificationService.showSmsDetectedNotification(result);
 }
@@ -290,7 +303,9 @@ class WalletKeeperAdSettings {
             ? testIosBannerAdId
             : _admobIosTestBannerUnitId;
       }
-      return iosBannerAdId.isNotEmpty ? iosBannerAdId : _admobIosTestBannerUnitId;
+      return iosBannerAdId.isNotEmpty
+          ? iosBannerAdId
+          : _admobIosTestBannerUnitId;
     }
     return '';
   }
@@ -313,12 +328,15 @@ Future<WalletKeeperAdSettings> _fetchWalletKeeperAdSettings() async {
     final body = await response.transform(utf8.decoder).join();
     final decoded = jsonDecode(body) as Map<String, dynamic>;
     final data = (decoded['data'] as Map?)?.cast<String, dynamic>() ?? const {};
-    final androidBanner = (data['android_banner_ad_id'] as String? ?? '').trim();
+    final androidBanner = (data['android_banner_ad_id'] as String? ?? '')
+        .trim();
     final iosBanner = (data['ios_banner_ad_id'] as String? ?? '').trim();
     final testAndroidBanner =
         (data['test_android_banner_ad_id'] as String? ?? '').trim();
-    final testIosBanner = (data['test_ios_banner_ad_id'] as String? ?? '').trim();
-    final useTestAds = data['use_test_ads'] == true ||
+    final testIosBanner = (data['test_ios_banner_ad_id'] as String? ?? '')
+        .trim();
+    final useTestAds =
+        data['use_test_ads'] == true ||
         androidBanner == _admobAndroidTestBannerUnitId ||
         iosBanner == _admobIosTestBannerUnitId;
     return WalletKeeperAdSettings(
@@ -345,7 +363,8 @@ class WalletKeeperStartupShell extends StatefulWidget {
   const WalletKeeperStartupShell({super.key});
 
   @override
-  State<WalletKeeperStartupShell> createState() => _WalletKeeperStartupShellState();
+  State<WalletKeeperStartupShell> createState() =>
+      _WalletKeeperStartupShellState();
 }
 
 class _WalletKeeperStartupBundle {
@@ -356,6 +375,14 @@ class _WalletKeeperStartupBundle {
 
   final WalletKeeperFeatureAccess featureAccess;
   final WalletKeeperVersionCheckResult? versionCheck;
+}
+
+WalletKeeperFeatureAccess _fallbackFeatureAccess() {
+  return WalletKeeperFeatureAccess(
+    onboardingSeen: !Platform.isAndroid,
+    smsGranted: false,
+    notificationGranted: false,
+  );
 }
 
 class _WalletKeeperStartupShellState extends State<WalletKeeperStartupShell> {
@@ -374,12 +401,25 @@ class _WalletKeeperStartupShellState extends State<WalletKeeperStartupShell> {
   Future<_WalletKeeperStartupBundle> _initializeStartup() async {
     _walletKeeperAdSettingsCache = await _fetchWalletKeeperAdSettings();
     if (Platform.isAndroid || Platform.isIOS) {
-      await MobileAds.instance.initialize();
+      try {
+        await MobileAds.instance.initialize().timeout(
+          const Duration(seconds: 5),
+        );
+      } catch (_) {}
     }
-    final featureAccess = await _settingsRepository.loadFeatureAccess();
+    WalletKeeperFeatureAccess featureAccess;
+    try {
+      featureAccess = await _settingsRepository.loadFeatureAccess().timeout(
+        const Duration(seconds: 5),
+      );
+    } catch (_) {
+      featureAccess = _fallbackFeatureAccess();
+    }
     WalletKeeperVersionCheckResult? versionCheck;
     try {
-      versionCheck = await _versionRepository.checkCurrentVersion();
+      versionCheck = await _versionRepository.checkCurrentVersion().timeout(
+        const Duration(seconds: 5),
+      );
     } catch (_) {}
     return _WalletKeeperStartupBundle(
       featureAccess: featureAccess,
@@ -395,9 +435,18 @@ class _WalletKeeperStartupShellState extends State<WalletKeeperStartupShell> {
         if (snapshot.connectionState != ConnectionState.done) {
           return const WalletKeeperCustomSplashScreen();
         }
+        if (snapshot.hasError) {
+          return WalletKeeperBootstrap(
+            initialFeatureAccess: _fallbackFeatureAccess(),
+            versionCheck: null,
+          );
+        }
         final bundle = snapshot.data;
         if (bundle == null) {
-          return const WalletKeeperCustomSplashScreen();
+          return WalletKeeperBootstrap(
+            initialFeatureAccess: _fallbackFeatureAccess(),
+            versionCheck: null,
+          );
         }
         return WalletKeeperBootstrap(
           initialFeatureAccess: bundle.featureAccess,
@@ -460,8 +509,7 @@ class WalletKeeperBootstrap extends StatefulWidget {
 class _WalletKeeperBootstrapState extends State<WalletKeeperBootstrap> {
   final WalletKeeperSettingsRepository _settingsRepository =
       WalletKeeperSettingsRepository();
-  final WalletKeeperNotificationAccessRepository
-      _notificationAccessRepository =
+  final WalletKeeperNotificationAccessRepository _notificationAccessRepository =
       const WalletKeeperNotificationAccessRepository();
   late WalletKeeperFeatureAccess _featureAccess;
   bool _requestingPermissions = false;
@@ -480,7 +528,8 @@ class _WalletKeeperBootstrapState extends State<WalletKeeperBootstrap> {
   Future<void> _requestIosNotificationPermissionOnFirstLaunchIfNeeded() async {
     if (!Platform.isIOS) return;
     final prefs = await SharedPreferences.getInstance();
-    final alreadyPrompted = prefs.getBool(_iosNotificationAutoPromptedKey) ?? false;
+    final alreadyPrompted =
+        prefs.getBool(_iosNotificationAutoPromptedKey) ?? false;
     if (alreadyPrompted) return;
     await prefs.setBool(_iosNotificationAutoPromptedKey, true);
     try {
@@ -541,8 +590,8 @@ class _WalletKeeperBootstrapState extends State<WalletKeeperBootstrap> {
                 final storeUrl = versionCheck.storeUrl.trim().isNotEmpty
                     ? versionCheck.storeUrl.trim()
                     : (Platform.isIOS
-                        ? versionCheck.iosStoreUrl.trim()
-                        : versionCheck.androidStoreUrl.trim());
+                          ? versionCheck.iosStoreUrl.trim()
+                          : versionCheck.androidStoreUrl.trim());
                 if (storeUrl.isNotEmpty) {
                   final uri = Uri.tryParse(storeUrl);
                   if (uri != null) {
@@ -568,23 +617,21 @@ class _WalletKeeperBootstrapState extends State<WalletKeeperBootstrap> {
   Future<void> _agreeAndRequestPermissions() async {
     if (_requestingPermissions) return;
     setState(() => _requestingPermissions = true);
-      try {
-        final access = await _settingsRepository.requestFeatureAccess();
+    try {
+      final access = await _settingsRepository.requestFeatureAccess();
+      if (!mounted) return;
+      setState(() => _featureAccess = access);
+      if (!access.hasRequiredPermissionAccess) {
+        await showAppToast('권한 허용이 필요해요.');
+      }
+      if (Platform.isAndroid) {
+        final opened = await _notificationAccessRepository
+            .openFinancialAppNotificationSettings();
         if (!mounted) return;
-        setState(() => _featureAccess = access);
-        if (!access.hasRequiredPermissionAccess) {
-          await showAppToast('권한 허용이 필요해요.');
-        }
-        if (Platform.isAndroid) {
-          final opened = await _notificationAccessRepository
-              .openFinancialAppNotificationSettings();
-          if (!mounted) return;
-          await showAppToast(
-            opened
-                ? '금융 앱 알림 감지를 위해 알림 접근을 허용해주세요.'
-                : '알림 접근 설정을 열 수 없습니다.',
-          );
-        }
+        await showAppToast(
+          opened ? '금융 앱 알림 감지를 위해 알림 접근을 허용해주세요.' : '알림 접근 설정을 열 수 없습니다.',
+        );
+      }
     } catch (error, stackTrace) {
       debugPrint('Failed to request feature access: $error');
       debugPrintStack(stackTrace: stackTrace);
@@ -599,9 +646,9 @@ class _WalletKeeperBootstrapState extends State<WalletKeeperBootstrap> {
   }
 
   Future<void> _skipPermissions() async {
-      final access = await _settingsRepository.skipFeatureAccess();
-      if (!mounted) return;
-      setState(() => _featureAccess = access);
+    final access = await _settingsRepository.skipFeatureAccess();
+    if (!mounted) return;
+    setState(() => _featureAccess = access);
   }
 
   Future<void> _requestPermissionsAgain() async {
@@ -668,9 +715,7 @@ class WalletKeeperSmsConsentScreen extends StatelessWidget {
           final modalWidth = math.min(constraints.maxWidth - 72, 980.0);
           return Stack(
             children: [
-              Positioned.fill(
-                child: Container(color: const Color(0xFFF4F5F7)),
-              ),
+              Positioned.fill(child: Container(color: const Color(0xFFF4F5F7))),
               Center(
                 child: ConstrainedBox(
                   constraints: BoxConstraints.tightFor(width: modalWidth),
@@ -723,11 +768,15 @@ class WalletKeeperSmsConsentScreen extends StatelessWidget {
                           children: [
                             Expanded(
                               child: OutlinedButton(
-                                onPressed: requestingPermissions ? null : onDecline,
+                                onPressed: requestingPermissions
+                                    ? null
+                                    : onDecline,
                                 style: OutlinedButton.styleFrom(
                                   minimumSize: const Size.fromHeight(48),
                                   padding: EdgeInsets.zero,
-                                  side: const BorderSide(color: Color(0xFFD7DEE8)),
+                                  side: const BorderSide(
+                                    color: Color(0xFFD7DEE8),
+                                  ),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(14),
                                   ),
@@ -747,12 +796,16 @@ class WalletKeeperSmsConsentScreen extends StatelessWidget {
                             const SizedBox(width: 12),
                             Expanded(
                               child: FilledButton(
-                                onPressed: requestingPermissions ? null : onAgree,
+                                onPressed: requestingPermissions
+                                    ? null
+                                    : onAgree,
                                 style: FilledButton.styleFrom(
                                   minimumSize: const Size.fromHeight(48),
                                   padding: EdgeInsets.zero,
                                   backgroundColor: const Color(0xFFE85D53),
-                                  disabledBackgroundColor: const Color(0xFFF2B9B5),
+                                  disabledBackgroundColor: const Color(
+                                    0xFFF2B9B5,
+                                  ),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(14),
                                   ),
