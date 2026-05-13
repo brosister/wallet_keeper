@@ -2382,6 +2382,20 @@ class WalletKeeperAccountRepository {
 
   Future<String> getOrCreateGuestSerial() async {
     final prefs = await SharedPreferences.getInstance();
+
+    try {
+      if (Platform.isAndroid) {
+        final androidDeviceId = await _deviceInfoChannel
+            .invokeMethod<String>('getAndroidDeviceId');
+        final normalized = androidDeviceId?.trim() ?? '';
+        if (normalized.isNotEmpty) {
+          final serial = 'android_$normalized';
+          await prefs.setString(_walletKeeperGuestSerialKey, serial);
+          return serial;
+        }
+      }
+    } catch (_) {}
+
     final cached = prefs.getString(_walletKeeperGuestSerialKey);
     if (cached != null && cached.isNotEmpty) return cached;
 

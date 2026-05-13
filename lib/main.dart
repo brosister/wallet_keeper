@@ -71,6 +71,9 @@ const _mmsReaderChannel = MethodChannel('wallet_keeper/mms_reader');
 const _mmsRouteChannel = MethodChannel('wallet_keeper/mms_route');
 const _nativeNotificationChannel = MethodChannel('wallet_keeper/native_notifications');
 const _notificationAccessChannel = MethodChannel('wallet_keeper/notification_access');
+const _deviceInfoChannel = MethodChannel(
+  'com.brosister.walletkeeper/device_info',
+);
 const _smsInboxNotificationPayload = 'sms_inbox';
 const _admobAndroidTestBannerUnitId = 'ca-app-pub-3940256099942544/6300978111';
 const _admobIosTestBannerUnitId = 'ca-app-pub-3940256099942544/2934735716';
