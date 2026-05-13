@@ -2351,18 +2351,8 @@ String _compactDailyAmount(double amount) {
 }
 
 IconData _entryCategoryIcon(LedgerEntry entry) {
-  final category = entry.category.toLowerCase();
-  if (category.contains('식') || category.contains('food') || category.contains('cafe')) {
-    return Icons.ramen_dining_rounded;
-  }
-  if (category.contains('교') || category.contains('taxi') || category.contains('car')) {
-    return Icons.directions_bus_rounded;
-  }
-  if (category.contains('쇼') || category.contains('mart') || category.contains('shop')) {
-    return Icons.shopping_bag_outlined;
-  }
-  if (category.contains('고정') || category.contains('통신')) {
-    return Icons.receipt_long_rounded;
-  }
-  return entry.type == EntryType.income ? Icons.south_west_rounded : Icons.payments_outlined;
+  return _walletKeeperCategoryDisplayIcon(
+    entry.category,
+    fallbackType: entry.type,
+  );
 }

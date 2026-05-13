@@ -2,6 +2,108 @@ part of '../main.dart';
 
 final Map<String, Future<Uint8List?>> _walletKeeperAppIconFutureCache = {};
 
+const List<String> _walletKeeperDefaultCategorySuggestions = <String>[
+  '식비',
+  '교통/차량',
+  '쇼핑',
+  '고정비',
+  '카드값',
+  '통신',
+  '보험',
+  '월세',
+  '구독',
+  '급여',
+  '입금',
+  '환급',
+];
+
+List<String> _mergeWalletKeeperCategorySuggestions(
+  Iterable<String> source, {
+  String? current,
+}) {
+  final seen = <String>{};
+  final merged = <String>[];
+  void addValue(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty || !seen.add(trimmed)) return;
+    merged.add(trimmed);
+  }
+
+  for (final category in _walletKeeperDefaultCategorySuggestions) {
+    addValue(category);
+  }
+  for (final category in source) {
+    addValue(category);
+  }
+  if (current != null) {
+    addValue(current);
+  }
+  return merged;
+}
+
+EntryType _walletKeeperSuggestedCategoryType(
+  String category, {
+  EntryType fallback = EntryType.expense,
+}) {
+  final normalized = category.toLowerCase();
+  if (normalized.contains('수입') ||
+      normalized.contains('입금') ||
+      normalized.contains('급여') ||
+      normalized.contains('환급') ||
+      normalized.contains('용돈') ||
+      normalized.contains('이자')) {
+    return EntryType.income;
+  }
+  return fallback;
+}
+
+IconData _walletKeeperCategoryDisplayIcon(
+  String category, {
+  EntryType fallbackType = EntryType.expense,
+}) {
+  final normalized = category.toLowerCase();
+  if (normalized.contains('식') ||
+      normalized.contains('food') ||
+      normalized.contains('cafe')) {
+    return Icons.ramen_dining_rounded;
+  }
+  if (normalized.contains('교') ||
+      normalized.contains('taxi') ||
+      normalized.contains('car') ||
+      normalized.contains('주유')) {
+    return Icons.directions_bus_rounded;
+  }
+  if (normalized.contains('쇼') ||
+      normalized.contains('mart') ||
+      normalized.contains('shop')) {
+    return Icons.shopping_bag_outlined;
+  }
+  if (normalized.contains('카드')) {
+    return Icons.credit_card_rounded;
+  }
+  if (normalized.contains('고정') ||
+      normalized.contains('통신') ||
+      normalized.contains('보험') ||
+      normalized.contains('월세') ||
+      normalized.contains('관리비') ||
+      normalized.contains('공과금') ||
+      normalized.contains('구독') ||
+      normalized.contains('대출') ||
+      normalized.contains('할부')) {
+    return Icons.receipt_long_rounded;
+  }
+  if (normalized.contains('문자')) {
+    return Icons.sms_outlined;
+  }
+  final resolvedType = _walletKeeperSuggestedCategoryType(
+    category,
+    fallback: fallbackType,
+  );
+  return resolvedType == EntryType.income
+      ? Icons.south_west_rounded
+      : Icons.payments_outlined;
+}
+
 class PlaceholderTabPage extends StatelessWidget {
   const PlaceholderTabPage({
     super.key,
@@ -1554,6 +1656,10 @@ class _SmsInboxPageState extends State<SmsInboxPage> {
     final actionBarBottomInset = math.max(0.0, bottomInset - 38);
     final applySystemBottomSafeArea = bottomInset == 0;
     final actionBarBottomPadding = bottomInset > 0 ? 22.0 : 12.0;
+    final inboxGuideText =
+        Platform.isIOS
+            ? 'iOS에서는 자동 감지 없이, 문자 가져오기 또는 문자 붙여넣기로 금융 내역을 직접 추가할 수 있습니다.\n왼쪽으로 밀면 삭제, 오른쪽으로 끝까지 밀면 바로 자동입력 저장됩니다.'
+            : 'SMS, MMS, 금융앱 알림 중 금융 내역 관련 내용이 자동 감지되어 문자함에 담깁니다.\n문자 가져오기는 휴대폰에 저장된 최근 문자를 수동으로 불러옵니다. 왼쪽으로 밀면 삭제, 오른쪽으로 끝까지 밀면 바로 자동입력 저장됩니다.';
     final allSelected =
         _visibleDrafts.isNotEmpty && _selectedIds.length == _visibleDrafts.length;
     return PopScope(
@@ -1603,8 +1709,8 @@ class _SmsInboxPageState extends State<SmsInboxPage> {
                   margin: const EdgeInsets.only(bottom: 10),
                   padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
                   color: Colors.white,
-                    child: const Text(
-                      'SMS, MMS, 금융앱 알림 중 금융 내역 관련 내용이 자동 감지되어 문자함에 담깁니다.\n문자 가져오기는 휴대폰에 저장된 최근 문자를 수동으로 불러옵니다. 왼쪽으로 밀면 삭제, 오른쪽으로 끝까지 밀면 바로 자동입력 저장됩니다.',
+                  child: Text(
+                    inboxGuideText,
                       style: TextStyle(
                         color: Color(0xFF59606B),
                       fontSize: 13,
@@ -2193,6 +2299,8 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
   late final TextEditingController _categoryController;
   late final TextEditingController _noteController;
   late final FocusNode _categoryFocusNode;
+  final GlobalKey _categoryFieldKey = GlobalKey();
+  final Object _categoryAutocompleteGroup = Object();
   List<String> _attachmentPaths = const [];
   late EntryType _type;
   DateTime _date = DateTime.now();
@@ -2312,19 +2420,10 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
   }
 
   List<String> get _categorySuggestions {
-    final values = <String>{};
-    for (final category in widget.categorySuggestions) {
-      final trimmed = category.trim();
-      if (trimmed.isNotEmpty) {
-        values.add(trimmed);
-      }
-    }
-    final current = _categoryController.text.trim();
-    if (current.isNotEmpty) {
-      values.add(current);
-    }
-    final list = values.toList()..sort();
-    return list;
+    return _mergeWalletKeeperCategorySuggestions(
+      widget.categorySuggestions,
+      current: _categoryController.text.trim(),
+    );
   }
 
   Future<bool> confirmDiscardIfNeeded() async {
@@ -2522,7 +2621,8 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
           ),
           Expanded(
             child: ListView(
-              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              keyboardDismissBehavior:
+                  ScrollViewKeyboardDismissBehavior.manual,
               padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
               children: [
                 Row(
@@ -2625,101 +2725,164 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
                 const SizedBox(height: 12),
                 _EditorRow(
                   label: '분류',
-                  child: RawAutocomplete<String>(
-                    textEditingController: _categoryController,
-                    focusNode: _categoryFocusNode,
-                    optionsViewOpenDirection: OptionsViewOpenDirection.up,
-                    optionsBuilder: (textEditingValue) {
-                      final query = textEditingValue.text.trim().toLowerCase();
-                      final source = _categorySuggestions;
-                      if (query.isEmpty) {
-                        return source.take(8);
-                      }
-                      return source.where(
-                        (item) => item.toLowerCase().contains(query),
-                      ).take(8);
-                    },
-                    onSelected: (value) {
-                      _setCategoryText(value, editedByUser: true);
-                    },
-                    fieldViewBuilder:
-                        (context, controller, focusNode, onFieldSubmitted) {
-                      return TextField(
-                        controller: controller,
-                        focusNode: focusNode,
-                        onChanged: (_) {
-                          if (_applyingCategoryText) return;
-                          _categoryEditedByUser = true;
+                  child: Builder(
+                    builder: (context) {
+                      final autocompleteLayout =
+                          _resolveAutocompletePanelLayout(
+                            context,
+                            _categoryFieldKey,
+                          );
+                      return RawAutocomplete<String>(
+                        textEditingController: _categoryController,
+                        focusNode: _categoryFocusNode,
+                        optionsViewOpenDirection: autocompleteLayout.direction,
+                        optionsBuilder: (textEditingValue) {
+                          final query =
+                              textEditingValue.text.trim().toLowerCase();
+                          final source = _categorySuggestions;
+                          if (query.isEmpty) {
+                            return source.take(12);
+                          }
+                          return source.where(
+                            (item) => item.toLowerCase().contains(query),
+                          ).take(12);
                         },
-                        style: const TextStyle(
-                          color: Color(0xFF20242B),
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                        ),
-                        decoration: const InputDecoration(
-                          border: InputBorder.none,
-                          hintText: '분류 입력',
-                          hintStyle: TextStyle(
-                            color: Color(0xFFA5ACB7),
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
-                          isDense: true,
-                        ),
-                      );
-                    },
-                    optionsViewBuilder: (context, onSelected, options) {
-                      final list = options.toList(growable: false);
-                      if (list.isEmpty) {
-                        return const SizedBox.shrink();
-                      }
-                      final maxHeight = math.min(
-                        240.0,
-                        MediaQuery.sizeOf(context).height * 0.3,
-                      );
-                      return Align(
-                        alignment: Alignment.topLeft,
-                        child: Material(
-                          color: Colors.white,
-                          elevation: 10,
-                          borderRadius: BorderRadius.circular(16),
-                          child: Container(
-                            width: 220,
-                            constraints: BoxConstraints(maxHeight: maxHeight),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: const Color(0xFFE6EAF0)),
+                        onSelected: (value) {
+                          _setCategoryText(value, editedByUser: true);
+                        },
+                        fieldViewBuilder:
+                            (context, controller, focusNode, onFieldSubmitted) {
+                          return TapRegion(
+                            groupId: _categoryAutocompleteGroup,
+                            onTapOutside: (_) => focusNode.unfocus(),
+                            child: TextField(
+                              key: _categoryFieldKey,
+                              controller: controller,
+                              focusNode: focusNode,
+                              onChanged: (_) {
+                                if (_applyingCategoryText) return;
+                                _categoryEditedByUser = true;
+                              },
+                              style: const TextStyle(
+                                color: Color(0xFF20242B),
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                              ),
+                              decoration: const InputDecoration(
+                                border: InputBorder.none,
+                                hintText: '분류 입력',
+                                hintStyle: TextStyle(
+                                  color: Color(0xFFA5ACB7),
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                isDense: true,
+                              ),
                             ),
-                            child: ListView.separated(
-                              padding: const EdgeInsets.symmetric(vertical: 6),
-                              shrinkWrap: true,
-                              itemCount: list.length,
-                              separatorBuilder: (context, index) =>
-                                  const Divider(height: 1, color: Color(0xFFF0F3F7)),
-                              itemBuilder: (context, index) {
-                                final option = list[index];
-                                return InkWell(
-                                  onTap: () => onSelected(option),
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 11,
-                                    ),
-                                    child: Text(
-                                      option,
-                                      style: const TextStyle(
-                                        color: Color(0xFF20242B),
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w700,
-                                      ),
+                          );
+                        },
+                        optionsViewBuilder: (context, onSelected, options) {
+                          final list = options.toList(growable: false);
+                          if (list.isEmpty) {
+                            return const SizedBox.shrink();
+                          }
+                          return Align(
+                            alignment: Alignment.topLeft,
+                            child: TapRegion(
+                              groupId: _categoryAutocompleteGroup,
+                              child: Material(
+                                color: Colors.white,
+                                elevation: 10,
+                                borderRadius: BorderRadius.circular(16),
+                                child: Container(
+                                  width: 220,
+                                  constraints: BoxConstraints(
+                                    maxHeight: autocompleteLayout.maxHeight,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(
+                                      color: const Color(0xFFE6EAF0),
                                     ),
                                   ),
-                                );
-                              },
+                                  child: ListView.separated(
+                                    primary: false,
+                                    keyboardDismissBehavior:
+                                        ScrollViewKeyboardDismissBehavior
+                                            .manual,
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 6,
+                                    ),
+                                    shrinkWrap: true,
+                                    itemCount: list.length,
+                                    separatorBuilder: (context, index) =>
+                                        const Divider(
+                                          height: 1,
+                                          color: Color(0xFFF0F3F7),
+                                        ),
+                                    itemBuilder: (context, index) {
+                                      final option = list[index];
+                                      final optionType =
+                                          _walletKeeperSuggestedCategoryType(
+                                            option,
+                                            fallback: _type,
+                                          );
+                                      final accent = _assetAccentForCategory(
+                                        option,
+                                        optionType,
+                                      );
+                                      return InkWell(
+                                        onTap: () => onSelected(option),
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                            vertical: 11,
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              Container(
+                                                width: 28,
+                                                height: 28,
+                                                decoration: BoxDecoration(
+                                                  color: accent.withValues(
+                                                    alpha: 0.12,
+                                                  ),
+                                                  borderRadius:
+                                                      BorderRadius.circular(10),
+                                                ),
+                                                alignment: Alignment.center,
+                                                child: Icon(
+                                                  _walletKeeperCategoryDisplayIcon(
+                                                    option,
+                                                    fallbackType: optionType,
+                                                  ),
+                                                  size: 16,
+                                                  color: accent,
+                                                ),
+                                              ),
+                                              const SizedBox(width: 10),
+                                              Expanded(
+                                                child: Text(
+                                                  option,
+                                                  style: const TextStyle(
+                                                    color: Color(0xFF20242B),
+                                                    fontSize: 13,
+                                                    fontWeight: FontWeight.w700,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
+                          );
+                        },
                       );
                     },
                   ),
@@ -2776,40 +2939,41 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
                             type: MaterialType.transparency,
                             child: IconButton(
                               onPressed: _openPhotoPicker,
-                              constraints: const BoxConstraints.tightFor(
-                                width: 28,
-                                height: 28,
-                              ),
-                              padding: EdgeInsets.zero,
                               icon: const Icon(
                                 Icons.camera_alt_outlined,
-                                color: Color(0xFF8C95A2),
+                                color: Color(0xFF7B8491),
                                 size: 18,
                               ),
+                              splashRadius: 18,
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(
+                                minWidth: 28,
+                                minHeight: 28,
+                              ),
+                              visualDensity: VisualDensity.compact,
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 4),
                       TextField(
                         controller: _noteController,
+                        keyboardType: TextInputType.multiline,
+                        maxLines: null,
                         minLines: 4,
-                        maxLines: 7,
                         style: const TextStyle(
-                          color: Color(0xFF5A616C),
+                          color: Color(0xFF20242B),
                           fontSize: 13,
                           height: 1.45,
                           fontWeight: FontWeight.w600,
                         ),
                         decoration: const InputDecoration(
                           border: InputBorder.none,
-                          hintText: '메모를 입력하세요.',
+                          hintText: '메모를 입력하세요',
                           hintStyle: TextStyle(
                             color: Color(0xFFA5ACB7),
                             fontSize: 13,
-                            fontWeight: FontWeight.w600,
+                            fontWeight: FontWeight.w500,
                           ),
-                          isDense: true,
                         ),
                       ),
                       if (_attachmentPaths.isNotEmpty) ...[
@@ -2853,8 +3017,10 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
                                     child: GestureDetector(
                                       onTap: () {
                                         setState(() {
-                                          _attachmentPaths = List<String>.from(_attachmentPaths)
-                                            ..removeAt(index);
+                                          _attachmentPaths =
+                                              List<String>.from(
+                                                _attachmentPaths,
+                                              )..removeAt(index);
                                         });
                                       },
                                       child: Container(
@@ -2892,11 +3058,11 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
               ),
             ),
             padding: EdgeInsets.fromLTRB(
-              16,
-              10,
-              16,
-              actionBarBottomPadding + actionBarBottomInset,
-            ),
+                16,
+                10,
+                16,
+                actionBarBottomPadding + actionBarBottomInset,
+              ),
             child: SafeArea(
               top: false,
               bottom: applySystemBottomSafeArea,
@@ -3471,9 +3637,8 @@ class InquiryListPage extends StatelessWidget {
                     padding: EdgeInsets.fromLTRB(16, 10, 16, bottomInset + 92),
                     children: [
                       if (inquiries.isEmpty)
-                        const _AssetSimpleEmpty(
-                          title: '등록된 문의가 없습니다.',
-                          subtitle: '우측 하단 버튼으로 새 문의를 작성할 수 있습니다.',
+                        _InquiryEmptyCard(
+                          onTap: onOpenCompose,
                         )
                       else
                         ...List.generate(inquiries.length, (index) {
@@ -3507,6 +3672,76 @@ class InquiryListPage extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _InquiryEmptyCard extends StatelessWidget {
+  const _InquiryEmptyCard({
+    required this.onTap,
+  });
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: const Color(0xFFE6EAF0)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF1EE),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(
+                  Icons.chat_bubble_outline_rounded,
+                  size: 18,
+                  color: Color(0xFFE76158),
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '등록된 문의가 없습니다',
+                      style: TextStyle(
+                        color: Color(0xFF14171C),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      '새 문의를 등록하면 이곳에서 답변 진행 상태를 확인할 수 있습니다.',
+                      style: TextStyle(
+                        color: Color(0xFF6F7782),
+                        fontSize: 12,
+                        height: 1.45,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -5111,14 +5346,7 @@ class _BudgetSettingsSheetState extends State<BudgetSettingsSheet> {
   int? _activeRowIndex;
 
   List<String> get _budgetCategorySuggestions {
-    final seen = <String>{};
-    final values = <String>[];
-    for (final suggestion in widget.categorySuggestions) {
-      final trimmed = suggestion.trim();
-      if (trimmed.isEmpty || !seen.add(trimmed)) continue;
-      values.add(trimmed);
-    }
-    return values;
+    return _mergeWalletKeeperCategorySuggestions(widget.categorySuggestions);
   }
 
   @override
@@ -5212,6 +5440,8 @@ class _BudgetSettingsSheetState extends State<BudgetSettingsSheet> {
           ),
           Expanded(
             child: ListView(
+              keyboardDismissBehavior:
+                  ScrollViewKeyboardDismissBehavior.manual,
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
               children: [
                 SizedBox(
@@ -5259,95 +5489,204 @@ class _BudgetSettingsSheetState extends State<BudgetSettingsSheet> {
                       children: [
                         Expanded(
                           flex: 5,
-                          child: RawAutocomplete<String>(
-                            textEditingController: row.categoryController,
-                            focusNode: row.categoryFocusNode,
-                            optionsViewOpenDirection: OptionsViewOpenDirection.up,
-                            optionsBuilder: (textEditingValue) {
-                              final query = textEditingValue.text.trim().toLowerCase();
-                              final source = _budgetCategorySuggestions;
-                              if (query.isEmpty) {
-                                return source.take(8);
-                              }
-                              return source.where(
-                                (item) => item.toLowerCase().contains(query),
-                              ).take(8);
-                            },
-                            onSelected: (value) {
-                              row.categoryController.text = value;
-                              setState(() => _activeRowIndex = index);
-                            },
-                            fieldViewBuilder:
-                                (context, controller, focusNode, onFieldSubmitted) {
-                              return TextField(
-                                controller: controller,
-                                focusNode: focusNode,
-                                onTap: () => setState(() => _activeRowIndex = index),
-                                onChanged: (_) => setState(() => _activeRowIndex = index),
-                                style: const TextStyle(
-                                  color: Color(0xFF20242B),
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                                decoration: const InputDecoration(
-                                  border: InputBorder.none,
-                                  isDense: true,
-                                  hintText: '분류 입력',
-                                ),
-                              );
-                            },
-                            optionsViewBuilder: (context, onSelected, options) {
-                              final list = options.toList(growable: false);
-                              if (list.isEmpty) {
-                                return const SizedBox.shrink();
-                              }
-                              final maxHeight = math.min(
-                                240.0,
-                                MediaQuery.sizeOf(context).height * 0.3,
-                              );
-                              return Align(
-                                alignment: Alignment.topLeft,
-                                child: Material(
-                                  color: Colors.white,
-                                  elevation: 10,
-                                  borderRadius: BorderRadius.circular(14),
-                                  child: Container(
-                                    width: 220,
-                                    constraints: BoxConstraints(maxHeight: maxHeight),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(14),
-                                      border: Border.all(color: const Color(0xFFE6EAF0)),
-                                    ),
-                                    child: ListView.separated(
-                                      padding: const EdgeInsets.symmetric(vertical: 6),
-                                      shrinkWrap: true,
-                                      itemCount: list.length,
-                                      separatorBuilder: (context, optionIndex) =>
-                                          const Divider(height: 1, color: Color(0xFFF0F3F7)),
-                                      itemBuilder: (context, optionIndex) {
-                                        final option = list[optionIndex];
-                                        return InkWell(
-                                          onTap: () => onSelected(option),
-                                          child: Padding(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 14,
-                                              vertical: 10,
-                                            ),
-                                            child: Text(
-                                              option,
-                                              style: const TextStyle(
-                                                color: Color(0xFF20242B),
-                                                fontSize: 13,
-                                                fontWeight: FontWeight.w700,
+                          child: Builder(
+                            builder: (context) {
+                              final autocompleteLayout =
+                                  _resolveAutocompletePanelLayout(
+                                    context,
+                                    row.categoryFieldKey,
+                                  );
+                              return RawAutocomplete<String>(
+                                textEditingController: row.categoryController,
+                                focusNode: row.categoryFocusNode,
+                                optionsViewOpenDirection:
+                                    autocompleteLayout.direction,
+                                optionsBuilder: (textEditingValue) {
+                                  final query =
+                                      textEditingValue.text.trim().toLowerCase();
+                                  final source = _budgetCategorySuggestions;
+                                  if (query.isEmpty) {
+                                    return source.take(12);
+                                  }
+                                  return source.where(
+                                    (item) => item.toLowerCase().contains(query),
+                                  ).take(12);
+                                },
+                                onSelected: (value) {
+                                  row.categoryController.text = value;
+                                  setState(() => _activeRowIndex = index);
+                                },
+                                fieldViewBuilder:
+                                    (
+                                      context,
+                                      controller,
+                                      focusNode,
+                                      onFieldSubmitted,
+                                    ) {
+                                      return TapRegion(
+                                        groupId: row.categoryTapRegionGroup,
+                                        onTapOutside:
+                                            (_) => focusNode.unfocus(),
+                                        child: TextField(
+                                          key: row.categoryFieldKey,
+                                          controller: controller,
+                                          focusNode: focusNode,
+                                          onTap:
+                                              () => setState(
+                                                () => _activeRowIndex = index,
+                                              ),
+                                          onChanged:
+                                              (_) => setState(
+                                                () => _activeRowIndex = index,
+                                              ),
+                                          style: const TextStyle(
+                                            color: Color(0xFF20242B),
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                          decoration: const InputDecoration(
+                                            border: InputBorder.none,
+                                            isDense: true,
+                                            hintText: '분류 입력',
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                optionsViewBuilder:
+                                    (context, onSelected, options) {
+                                      final list = options.toList(
+                                        growable: false,
+                                      );
+                                      if (list.isEmpty) {
+                                        return const SizedBox.shrink();
+                                      }
+                                      return Align(
+                                        alignment: Alignment.topLeft,
+                                        child: TapRegion(
+                                          groupId: row.categoryTapRegionGroup,
+                                          child: Material(
+                                            color: Colors.white,
+                                            elevation: 10,
+                                            borderRadius:
+                                                BorderRadius.circular(14),
+                                            child: Container(
+                                              width: 220,
+                                              constraints: BoxConstraints(
+                                                maxHeight:
+                                                    autocompleteLayout
+                                                        .maxHeight,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                color: Colors.white,
+                                                borderRadius:
+                                                    BorderRadius.circular(14),
+                                                border: Border.all(
+                                                  color: const Color(
+                                                    0xFFE6EAF0,
+                                                  ),
+                                                ),
+                                              ),
+                                              child: ListView.separated(
+                                                primary: false,
+                                                keyboardDismissBehavior:
+                                                    ScrollViewKeyboardDismissBehavior
+                                                        .manual,
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      vertical: 6,
+                                                    ),
+                                                shrinkWrap: true,
+                                                itemCount: list.length,
+                                                separatorBuilder:
+                                                    (context, optionIndex) =>
+                                                        const Divider(
+                                                          height: 1,
+                                                          color: Color(
+                                                            0xFFF0F3F7,
+                                                          ),
+                                                        ),
+                                                itemBuilder:
+                                                    (context, optionIndex) {
+                                                      final option =
+                                                          list[optionIndex];
+                                                      final optionType =
+                                                          _walletKeeperSuggestedCategoryType(
+                                                            option,
+                                                          );
+                                                      final accent =
+                                                          _assetAccentForCategory(
+                                                            option,
+                                                            optionType,
+                                                          );
+                                                      return InkWell(
+                                                        onTap:
+                                                            () => onSelected(
+                                                              option,
+                                                            ),
+                                                        child: Padding(
+                                                          padding:
+                                                              const EdgeInsets.symmetric(
+                                                                horizontal: 14,
+                                                                vertical: 10,
+                                                              ),
+                                                          child: Row(
+                                                            children: [
+                                                              Container(
+                                                                width: 28,
+                                                                height: 28,
+                                                                decoration: BoxDecoration(
+                                                                  color: accent
+                                                                      .withValues(
+                                                                        alpha:
+                                                                            0.12,
+                                                                      ),
+                                                                  borderRadius:
+                                                                      BorderRadius.circular(
+                                                                        10,
+                                                                      ),
+                                                                ),
+                                                                alignment:
+                                                                    Alignment
+                                                                        .center,
+                                                                child: Icon(
+                                                                  _walletKeeperCategoryDisplayIcon(
+                                                                    option,
+                                                                    fallbackType:
+                                                                        optionType,
+                                                                  ),
+                                                                  size: 16,
+                                                                  color: accent,
+                                                                ),
+                                                              ),
+                                                              const SizedBox(
+                                                                width: 10,
+                                                              ),
+                                                              Expanded(
+                                                                child: Text(
+                                                                  option,
+                                                                  style:
+                                                                      const TextStyle(
+                                                                        color: Color(
+                                                                          0xFF20242B,
+                                                                        ),
+                                                                        fontSize:
+                                                                            13,
+                                                                        fontWeight:
+                                                                            FontWeight.w700,
+                                                                      ),
+                                                                ),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                        ),
+                                                      );
+                                                    },
                                               ),
                                             ),
                                           ),
-                                        );
-                                      },
-                                    ),
-                                  ),
-                                ),
+                                        ),
+                                      );
+                                    },
                               );
                             },
                           ),
@@ -5435,6 +5774,8 @@ class _BudgetDraftRow {
     required this.createdAt,
     required this.categoryController,
     required this.categoryFocusNode,
+    required this.categoryFieldKey,
+    required this.categoryTapRegionGroup,
     required this.amountController,
   });
 
@@ -5444,6 +5785,8 @@ class _BudgetDraftRow {
       createdAt: DateTime.now(),
       categoryController: TextEditingController(),
       categoryFocusNode: FocusNode(),
+      categoryFieldKey: GlobalKey(),
+      categoryTapRegionGroup: Object(),
       amountController: TextEditingController(),
     );
   }
@@ -5454,6 +5797,8 @@ class _BudgetDraftRow {
       createdAt: budget.createdAt,
       categoryController: TextEditingController(text: budget.category),
       categoryFocusNode: FocusNode(),
+      categoryFieldKey: GlobalKey(),
+      categoryTapRegionGroup: Object(),
       amountController: TextEditingController(
         text: _ThousandsSeparatorInputFormatter.formatDigits(
           budget.amount.round().toString(),
@@ -5466,6 +5811,8 @@ class _BudgetDraftRow {
   final DateTime createdAt;
   final TextEditingController categoryController;
   final FocusNode categoryFocusNode;
+  final GlobalKey categoryFieldKey;
+  final Object categoryTapRegionGroup;
   final TextEditingController amountController;
 
   void dispose() {
@@ -5473,6 +5820,52 @@ class _BudgetDraftRow {
     categoryFocusNode.dispose();
     amountController.dispose();
   }
+}
+
+class _AutocompletePanelLayout {
+  const _AutocompletePanelLayout({
+    required this.direction,
+    required this.maxHeight,
+  });
+
+  final OptionsViewOpenDirection direction;
+  final double maxHeight;
+}
+
+_AutocompletePanelLayout _resolveAutocompletePanelLayout(
+  BuildContext context,
+  GlobalKey fieldKey, {
+  double preferredMaxHeight = 240,
+}) {
+  final mediaQuery = MediaQuery.of(context);
+  final screenHeight = mediaQuery.size.height;
+  final keyboardTop = screenHeight - mediaQuery.viewInsets.bottom - 12;
+  final safeTop = mediaQuery.padding.top + 12;
+  final fieldContext = fieldKey.currentContext;
+  final renderBox = fieldContext?.findRenderObject() as RenderBox?;
+  if (renderBox == null || !renderBox.hasSize) {
+    return const _AutocompletePanelLayout(
+      direction: OptionsViewOpenDirection.down,
+      maxHeight: 240,
+    );
+  }
+  final origin = renderBox.localToGlobal(Offset.zero);
+  final fieldTop = origin.dy;
+  final fieldBottom = fieldTop + renderBox.size.height;
+  final availableAbove = math.max(0.0, fieldTop - safeTop);
+  final availableBelow = math.max(0.0, keyboardTop - fieldBottom);
+  final direction =
+      availableBelow >= 180 || availableBelow >= availableAbove
+          ? OptionsViewOpenDirection.down
+          : OptionsViewOpenDirection.up;
+  final availableHeight =
+      direction == OptionsViewOpenDirection.down
+          ? availableBelow
+          : availableAbove;
+  return _AutocompletePanelLayout(
+    direction: direction,
+    maxHeight: math.max(1.0, math.min(preferredMaxHeight, availableHeight)),
+  );
 }
 
 class _SocialLoginButtonTile extends StatelessWidget {
@@ -6692,15 +7085,7 @@ Color _assetAccentForCategory(String category, EntryType type) {
 }
 
 IconData _assetIconForCategory(String category) {
-  final normalized = category.toLowerCase();
-  if (normalized.contains('카드')) return Icons.credit_card_rounded;
-  if (normalized.contains('고정') || normalized.contains('자동')) {
-    return Icons.alarm_rounded;
-  }
-  if (normalized.contains('문자')) return Icons.sms_outlined;
-  if (normalized.contains('교통')) return Icons.local_taxi_rounded;
-  if (normalized.contains('식비')) return Icons.ramen_dining_rounded;
-  return Icons.account_balance_wallet_rounded;
+  return _walletKeeperCategoryDisplayIcon(category);
 }
 
 class WalletKeeperPhotoPickerPage extends StatefulWidget {
