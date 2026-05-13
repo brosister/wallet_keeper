@@ -7007,7 +7007,7 @@ class _RecentAssetFlowRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = _assetAccentForCategory(entry.category, entry.type);
+    final accent = _calendarEntryAccent(entry);
     final prefix = entry.type == EntryType.expense ? '-' : '+';
     return Row(
       children: [
@@ -7015,13 +7015,13 @@ class _RecentAssetFlowRow extends StatelessWidget {
           width: 40,
           height: 40,
           decoration: BoxDecoration(
-            color: accent.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(14),
+            color: accent,
+            shape: BoxShape.circle,
           ),
           child: Icon(
             _assetIconForCategory(entry.category),
             size: 19,
-            color: accent,
+            color: Colors.white,
           ),
         ),
         const SizedBox(width: 12),
