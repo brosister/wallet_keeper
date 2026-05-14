@@ -2587,6 +2587,29 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
   }
 
   Future<void> _openPhotoPicker() async {
+    if (Platform.isAndroid) {
+      try {
+        final picker = ImagePicker();
+        final images = await picker.pickMultiImage(
+          maxWidth: 2400,
+          maxHeight: 2400,
+          imageQuality: 92,
+        );
+        if (!mounted || images.isEmpty) return;
+        final next = List<String>.from(_attachmentPaths);
+        for (final image in images) {
+          if (!next.contains(image.path)) {
+            next.add(image.path);
+          }
+        }
+        setState(() {
+          _attachmentPaths = next;
+        });
+      } catch (_) {
+        await showAppToast('사진을 선택할 수 없습니다.');
+      }
+      return;
+    }
     final selectedPaths = await Navigator.of(context).push<List<String>>(
       MaterialPageRoute(
         builder: (context) => WalletKeeperPhotoPickerPage(
