@@ -89,6 +89,51 @@ final StreamController<String> _notificationRouteController =
     StreamController<String>.broadcast();
 bool _pendingNotificationLaunchToSmsInbox = false;
 WalletKeeperAdSettings? _walletKeeperAdSettingsCache;
+Future<void>? _walletKeeperCoreServicesFuture;
+
+Future<void> _ensureWalletKeeperCoreServicesInitialized() {
+  return _walletKeeperCoreServicesFuture ??= _initializeWalletKeeperCoreServices();
+}
+
+Future<void> _initializeWalletKeeperCoreServices() async {
+  try {
+    if (Platform.isAndroid || Platform.isIOS || Platform.isMacOS) {
+      await Firebase.initializeApp().timeout(const Duration(seconds: 5));
+    }
+  } catch (error, stackTrace) {
+    debugPrint('Failed to initialize Firebase: $error');
+    debugPrintStack(stackTrace: stackTrace);
+  }
+  try {
+    KakaoSdk.init(nativeAppKey: _walletKeeperKakaoNativeKey);
+  } catch (error, stackTrace) {
+    debugPrint('Failed to initialize Kakao SDK: $error');
+    debugPrintStack(stackTrace: stackTrace);
+  }
+  if (_walletKeeperNaverClientId.isNotEmpty &&
+      _walletKeeperNaverClientSecret.isNotEmpty &&
+      (Platform.isAndroid || Platform.isIOS)) {
+    try {
+      NaverLoginSDK.initialize(
+        urlScheme: Platform.isIOS
+            ? 'com.brosister.walletkeeper'
+            : 'com.brosister.walletkeeper',
+        clientId: _walletKeeperNaverClientId,
+        clientSecret: _walletKeeperNaverClientSecret,
+        clientName: _walletKeeperNaverClientName,
+      );
+    } catch (error, stackTrace) {
+      debugPrint('Failed to initialize Naver SDK: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+  }
+  try {
+    await _initializeLocalNotifications().timeout(const Duration(seconds: 5));
+  } catch (error, stackTrace) {
+    debugPrint('Failed to initialize local notifications: $error');
+    debugPrintStack(stackTrace: stackTrace);
+  }
+}
 
 Future<void> _initializeLocalNotifications() async {
   const android = AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -141,29 +186,6 @@ Future<void> walletKeeperBackgroundMessageHandler(SmsMessage message) async {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  try {
-    if (Platform.isAndroid || Platform.isIOS || Platform.isMacOS) {
-      await Firebase.initializeApp();
-    }
-  } catch (_) {}
-  try {
-    KakaoSdk.init(nativeAppKey: _walletKeeperKakaoNativeKey);
-  } catch (_) {}
-  if (_walletKeeperNaverClientId.isNotEmpty &&
-      _walletKeeperNaverClientSecret.isNotEmpty &&
-      (Platform.isAndroid || Platform.isIOS)) {
-    try {
-      NaverLoginSDK.initialize(
-        urlScheme: Platform.isIOS
-            ? 'com.brosister.walletkeeper'
-            : 'com.brosister.walletkeeper',
-        clientId: _walletKeeperNaverClientId,
-        clientSecret: _walletKeeperNaverClientSecret,
-        clientName: _walletKeeperNaverClientName,
-      );
-    } catch (_) {}
-  }
-  await _initializeLocalNotifications();
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -173,6 +195,7 @@ Future<void> main() async {
       systemNavigationBarIconBrightness: Brightness.dark,
     ),
   );
+  unawaited(_ensureWalletKeeperCoreServicesInitialized());
   runApp(const WalletKeeperApp());
 }
 
@@ -308,19 +331,21 @@ class WalletKeeperAdSettings {
   }
 }
 
+const _fallbackWalletKeeperAdSettings = WalletKeeperAdSettings(
+  useTestAds: true,
+  androidBannerAdId: '',
+  iosBannerAdId: '',
+  testAndroidBannerAdId: _admobAndroidTestBannerUnitId,
+  testIosBannerAdId: _admobIosTestBannerUnitId,
+);
+
 Future<WalletKeeperAdSettings> _fetchWalletKeeperAdSettings() async {
   final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
   try {
     final request = await client.getUrl(Uri.parse(_walletKeeperAdSettingsUri));
     final response = await request.close();
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      return const WalletKeeperAdSettings(
-        useTestAds: true,
-        androidBannerAdId: '',
-        iosBannerAdId: '',
-        testAndroidBannerAdId: _admobAndroidTestBannerUnitId,
-        testIosBannerAdId: _admobIosTestBannerUnitId,
-      );
+      return _fallbackWalletKeeperAdSettings;
     }
     final body = await response.transform(utf8.decoder).join();
     final decoded = jsonDecode(body) as Map<String, dynamic>;
@@ -344,13 +369,7 @@ Future<WalletKeeperAdSettings> _fetchWalletKeeperAdSettings() async {
       testIosBannerAdId: testIosBanner,
     );
   } catch (_) {
-    return const WalletKeeperAdSettings(
-      useTestAds: true,
-      androidBannerAdId: '',
-      iosBannerAdId: '',
-      testAndroidBannerAdId: _admobAndroidTestBannerUnitId,
-      testIosBannerAdId: _admobIosTestBannerUnitId,
-    );
+    return _fallbackWalletKeeperAdSettings;
   } finally {
     client.close(force: true);
   }
@@ -396,7 +415,17 @@ class _WalletKeeperStartupShellState extends State<WalletKeeperStartupShell> {
   }
 
   Future<_WalletKeeperStartupBundle> _initializeStartup() async {
-    _walletKeeperAdSettingsCache = await _fetchWalletKeeperAdSettings();
+    try {
+      await _ensureWalletKeeperCoreServicesInitialized().timeout(
+        const Duration(seconds: 6),
+      );
+    } catch (_) {}
+    try {
+      _walletKeeperAdSettingsCache = await _fetchWalletKeeperAdSettings()
+          .timeout(const Duration(seconds: 6));
+    } catch (_) {
+      _walletKeeperAdSettingsCache = _fallbackWalletKeeperAdSettings;
+    }
     if (Platform.isAndroid || Platform.isIOS) {
       try {
         await MobileAds.instance.initialize().timeout(
