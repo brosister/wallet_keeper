@@ -17,7 +17,6 @@ class MainActivity : FlutterActivity() {
         private const val MMS_ROUTE_CHANNEL = "wallet_keeper/mms_route"
         private const val NATIVE_NOTIFICATION_CHANNEL = "wallet_keeper/native_notifications"
         private const val NOTIFICATION_ACCESS_CHANNEL = "wallet_keeper/notification_access"
-        private const val DEVICE_INFO_CHANNEL = "com.brosister.walletkeeper/device_info"
         private const val PREFS_NAME = "wallet_keeper_native"
         private const val LAUNCH_ROUTE_KEY = "launch_route"
         private const val SMS_INBOX_ROUTE = "sms_inbox"
@@ -135,25 +134,6 @@ class MainActivity : FlutterActivity() {
                         }
                     } catch (error: Exception) {
                         result.error("application_icon_failed", error.message, null)
-                    }
-                }
-                else -> result.notImplemented()
-            }
-        }
-        MethodChannel(
-            flutterEngine.dartExecutor.binaryMessenger,
-            DEVICE_INFO_CHANNEL
-        ).setMethodCallHandler { call, result ->
-            when (call.method) {
-                "getAndroidDeviceId" -> {
-                    try {
-                        val androidId = Settings.Secure.getString(
-                            contentResolver,
-                            Settings.Secure.ANDROID_ID
-                        )
-                        result.success(androidId)
-                    } catch (error: Exception) {
-                        result.error("device_id_failed", error.message, null)
                     }
                 }
                 else -> result.notImplemented()

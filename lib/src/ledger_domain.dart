@@ -2382,22 +2382,10 @@ class WalletKeeperAccountRepository {
 
   Future<String> getOrCreateGuestSerial() async {
     final prefs = await SharedPreferences.getInstance();
-
-    try {
-      if (Platform.isAndroid) {
-        final androidDeviceId = await _deviceInfoChannel
-            .invokeMethod<String>('getAndroidDeviceId');
-        final normalized = androidDeviceId?.trim() ?? '';
-        if (normalized.isNotEmpty) {
-          final serial = 'android_$normalized';
-          await prefs.setString(_walletKeeperGuestSerialKey, serial);
-          return serial;
-        }
-      }
-    } catch (_) {}
-
     final cached = prefs.getString(_walletKeeperGuestSerialKey);
-    if (cached != null && cached.isNotEmpty) return cached;
+    if (cached != null && cached.isNotEmpty && !cached.startsWith('android_')) {
+      return cached;
+    }
 
     String prefix = 'WK';
     try {
@@ -2447,9 +2435,15 @@ class WalletKeeperAccountRepository {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_walletKeeperSessionKey);
     if (raw == null || raw.isEmpty) return null;
-    return WalletKeeperUserSession.fromJson(
+    final session = WalletKeeperUserSession.fromJson(
       (jsonDecode(raw) as Map).cast<String, dynamic>(),
     );
+    if (session.isGuest && session.deviceSerial.startsWith('android_')) {
+      await prefs.remove(_walletKeeperSessionKey);
+      await prefs.remove(_walletKeeperGuestSerialKey);
+      return null;
+    }
+    return session;
   }
 
   Future<WalletKeeperUserSession> loadOrBootstrapSession() async {
