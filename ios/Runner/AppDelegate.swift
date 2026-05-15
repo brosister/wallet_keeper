@@ -7,7 +7,11 @@ import UIKit
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
+    NSLog("WalletKeeper iOS: AppDelegate didFinishLaunching started")
     GeneratedPluginRegistrant.register(with: self)
-    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+    NSLog("WalletKeeper iOS: GeneratedPluginRegistrant finished")
+    let result = super.application(application, didFinishLaunchingWithOptions: launchOptions)
+    NSLog("WalletKeeper iOS: super.application finished = \(result)")
+    return result
   }
 }
