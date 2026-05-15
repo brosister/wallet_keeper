@@ -14,64 +14,61 @@ enum _ShellRouteKind {
   editor,
 }
 
-enum _WalletKeeperCloudConflictAction {
-  startFresh,
-  loadRemote,
-}
+enum _WalletKeeperCloudConflictAction { startFresh, loadRemote }
 
 class _ShellRoute {
   const _ShellRoute.root()
-      : kind = _ShellRouteKind.root,
-        existing = null,
-        smsDraft = null,
-        inquiry = null;
+    : kind = _ShellRouteKind.root,
+      existing = null,
+      smsDraft = null,
+      inquiry = null;
   const _ShellRoute.smsInbox()
-      : kind = _ShellRouteKind.smsInbox,
-        existing = null,
-        smsDraft = null,
-        inquiry = null;
+    : kind = _ShellRouteKind.smsInbox,
+      existing = null,
+      smsDraft = null,
+      inquiry = null;
   const _ShellRoute.smsSettings()
-      : kind = _ShellRouteKind.smsSettings,
-        existing = null,
-        smsDraft = null,
-        inquiry = null;
+    : kind = _ShellRouteKind.smsSettings,
+      existing = null,
+      smsDraft = null,
+      inquiry = null;
   const _ShellRoute.settingsProfile()
-      : kind = _ShellRouteKind.settingsProfile,
-        existing = null,
-        smsDraft = null,
-        inquiry = null;
+    : kind = _ShellRouteKind.settingsProfile,
+      existing = null,
+      smsDraft = null,
+      inquiry = null;
   const _ShellRoute.settingsInquiryList()
-      : kind = _ShellRouteKind.settingsInquiryList,
-        existing = null,
-        smsDraft = null,
-        inquiry = null;
+    : kind = _ShellRouteKind.settingsInquiryList,
+      existing = null,
+      smsDraft = null,
+      inquiry = null;
   const _ShellRoute.settingsInquiryDetail({required this.inquiry})
-      : kind = _ShellRouteKind.settingsInquiryDetail,
-        existing = null,
-        smsDraft = null;
+    : kind = _ShellRouteKind.settingsInquiryDetail,
+      existing = null,
+      smsDraft = null;
   const _ShellRoute.settingsInquiryCompose()
-      : kind = _ShellRouteKind.settingsInquiryCompose,
-        existing = null,
-        smsDraft = null,
-        inquiry = null;
+    : kind = _ShellRouteKind.settingsInquiryCompose,
+      existing = null,
+      smsDraft = null,
+      inquiry = null;
   const _ShellRoute.settingsTerms()
-      : kind = _ShellRouteKind.settingsTerms,
-        existing = null,
-        smsDraft = null,
-        inquiry = null;
+    : kind = _ShellRouteKind.settingsTerms,
+      existing = null,
+      smsDraft = null,
+      inquiry = null;
   const _ShellRoute.assetUpcomingHistory()
-      : kind = _ShellRouteKind.assetUpcomingHistory,
-        existing = null,
-        smsDraft = null,
-        inquiry = null;
+    : kind = _ShellRouteKind.assetUpcomingHistory,
+      existing = null,
+      smsDraft = null,
+      inquiry = null;
   const _ShellRoute.assetFlowHistory()
-      : kind = _ShellRouteKind.assetFlowHistory,
-        existing = null,
-        smsDraft = null,
-        inquiry = null;
+    : kind = _ShellRouteKind.assetFlowHistory,
+      existing = null,
+      smsDraft = null,
+      inquiry = null;
   const _ShellRoute.editor({this.existing, this.smsDraft})
-      : kind = _ShellRouteKind.editor,
-        inquiry = null;
+    : kind = _ShellRouteKind.editor,
+      inquiry = null;
 
   final _ShellRouteKind kind;
   final LedgerEntry? existing;
@@ -95,7 +92,8 @@ class LedgerHomePage extends StatefulWidget {
   State<LedgerHomePage> createState() => _LedgerHomePageState();
 }
 
-class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObserver {
+class _LedgerHomePageState extends State<LedgerHomePage>
+    with WidgetsBindingObserver {
   final LedgerRepository _repository = LedgerRepository();
   final WalletKeeperSmsAutomationRepository _smsAutomationRepository =
       WalletKeeperSmsAutomationRepository();
@@ -104,14 +102,18 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
       WalletKeeperSmsSettingsRepository();
   final WalletKeeperNotificationAccessRepository _notificationAccessRepository =
       const WalletKeeperNotificationAccessRepository();
-  final WalletKeeperMemoRepository _memoRepository = WalletKeeperMemoRepository();
+  final WalletKeeperMemoRepository _memoRepository =
+      WalletKeeperMemoRepository();
   final WalletKeeperBudgetRepository _budgetRepository =
       WalletKeeperBudgetRepository();
   final WalletKeeperInquiryRepository _inquiryRepository =
       WalletKeeperInquiryRepository();
-  final WalletKeeperAccountRepository _accountRepository = WalletKeeperAccountRepository();
-  final WalletKeeperCloudSyncRepository _cloudSyncRepository = WalletKeeperCloudSyncRepository();
-  final WalletKeeperPushRepository _pushRepository = WalletKeeperPushRepository();
+  final WalletKeeperAccountRepository _accountRepository =
+      WalletKeeperAccountRepository();
+  final WalletKeeperCloudSyncRepository _cloudSyncRepository =
+      WalletKeeperCloudSyncRepository();
+  final WalletKeeperPushRepository _pushRepository =
+      WalletKeeperPushRepository();
 
   List<LedgerEntry> _entries = const [];
   List<WalletKeeperMemo> _memos = const [];
@@ -135,7 +137,8 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
   int _overviewResetNonce = 0;
   double _bottomBannerHeight = 0;
   final List<_ShellRoute> _routeStack = [const _ShellRoute.root()];
-  final GlobalKey<_EntryEditorPageState> _editorPageKey = GlobalKey<_EntryEditorPageState>();
+  final GlobalKey<_EntryEditorPageState> _editorPageKey =
+      GlobalKey<_EntryEditorPageState>();
   final GlobalKey<_InquiryComposePageState> _inquiryComposePageKey =
       GlobalKey<_InquiryComposePageState>();
   DateTime? _lastBackPressedAt;
@@ -208,20 +211,55 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
     final loadedBudgets = await _budgetRepository.load();
     final loadedDrafts = await _smsAutomationRepository.loadInboxDrafts();
     final loadedSettings = await _smsSettingsRepository.load();
-    final financialNotificationEnabled =
-        await _notificationAccessRepository.isFinancialAppNotificationEnabled();
-    final session = await _accountRepository.bootstrapGuest();
-    final remoteBundle = await _cloudSyncRepository.loadRemote();
+    final financialNotificationEnabled = await _notificationAccessRepository
+        .isFinancialAppNotificationEnabled();
+
+    if (!mounted) return;
+    setState(() {
+      _entries = loadedEntries;
+      _memos = loadedMemos;
+      _budgets = loadedBudgets;
+      _smsDrafts = loadedDrafts;
+      _smsSettings = loadedSettings;
+      _financialAppNotificationEnabled = financialNotificationEnabled;
+    });
+
+    WalletKeeperUserSession? session;
+    try {
+      session = await _accountRepository.loadOrBootstrapSession().timeout(
+        const Duration(seconds: 6),
+      );
+    } catch (error, stackTrace) {
+      debugPrint('Wallet Keeper session bootstrap failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+
+    WalletKeeperSyncBundle? remoteBundle;
+    if (session != null) {
+      try {
+        remoteBundle = await _cloudSyncRepository
+            .loadRemoteForSession(session)
+            .timeout(const Duration(seconds: 6));
+      } catch (error, stackTrace) {
+        debugPrint('Wallet Keeper remote sync preload failed: $error');
+        debugPrintStack(stackTrace: stackTrace);
+      }
+    }
+
     final loadedInquiries = await _loadInquiriesForSession(session);
     if (!mounted) return;
     setState(() {
-      _entries = remoteBundle != null && loadedEntries.isEmpty ? remoteBundle.entries : loadedEntries;
-      _memos = remoteBundle != null && loadedMemos.isEmpty ? remoteBundle.memos : loadedMemos;
-      _budgets = remoteBundle != null && loadedBudgets.isEmpty ? remoteBundle.budgets : loadedBudgets;
+      _entries = remoteBundle != null && loadedEntries.isEmpty
+          ? remoteBundle.entries
+          : loadedEntries;
+      _memos = remoteBundle != null && loadedMemos.isEmpty
+          ? remoteBundle.memos
+          : loadedMemos;
+      _budgets = remoteBundle != null && loadedBudgets.isEmpty
+          ? remoteBundle.budgets
+          : loadedBudgets;
       _inquiries = loadedInquiries;
-      _smsDrafts = loadedDrafts;
       _smsSettings = remoteBundle?.smsSettings ?? loadedSettings;
-      _financialAppNotificationEnabled = financialNotificationEnabled;
       _session = session;
     });
     if (remoteBundle != null && loadedEntries.isEmpty) {
@@ -252,8 +290,8 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
   }
 
   Future<void> _refreshFinancialAppNotificationAccess() async {
-    final enabled =
-        await _notificationAccessRepository.isFinancialAppNotificationEnabled();
+    final enabled = await _notificationAccessRepository
+        .isFinancialAppNotificationEnabled();
     if (!mounted) return;
     if (_financialAppNotificationEnabled == enabled) return;
     setState(() {
@@ -262,8 +300,8 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
   }
 
   Future<void> _openFinancialAppNotificationSettings() async {
-    final opened =
-        await _notificationAccessRepository.openFinancialAppNotificationSettings();
+    final opened = await _notificationAccessRepository
+        .openFinancialAppNotificationSettings();
     if (!opened && mounted) {
       await showAppToast('알림 접근 설정을 열 수 없습니다.');
       return;
@@ -391,9 +429,7 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
             borderRadius: BorderRadius.circular(24),
           ),
           title: const Text('새로작성'),
-          content: const Text(
-            '새로작성하면 이미 저장된 데이터가 소멸되는데도 새로작성할까요?',
-          ),
+          content: const Text('새로작성하면 이미 저장된 데이터가 소멸되는데도 새로작성할까요?'),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
@@ -434,7 +470,9 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
     setState(() {
       _entries = next;
       if (consumedDraftId != null) {
-        _smsDrafts = _smsDrafts.where((draft) => draft.id != consumedDraftId).toList();
+        _smsDrafts = _smsDrafts
+            .where((draft) => draft.id != consumedDraftId)
+            .toList();
       }
       if (!stayOnCurrentRoute) {
         _popToSmsInboxOrRoot();
@@ -450,7 +488,9 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
       builder: (context) {
         return AlertDialog(
           backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
           title: const Text('내역 삭제'),
           content: Text('`${entry.title}` 내역을 삭제할까요?'),
           actions: [
@@ -485,7 +525,9 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
     List<WalletKeeperBudgetSetting> monthBudgets,
   ) async {
     final monthKey = DateFormat('yyyy-MM').format(month);
-    final retained = _budgets.where((budget) => budget.monthKey != monthKey).toList();
+    final retained = _budgets
+        .where((budget) => budget.monthKey != monthKey)
+        .toList();
     final next = [...retained, ...monthBudgets]
       ..sort((a, b) {
         final monthCompare = b.monthKey.compareTo(a.monthKey);
@@ -530,12 +572,15 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
     String successMessage,
   ) async {
     try {
-      final previousSession = _session ?? await _accountRepository.loadSession();
+      final previousSession =
+          _session ?? await _accountRepository.loadSession();
       final session = await action();
       final inquiries = await _loadInquiriesForSession(session);
       final switchedUser =
           previousSession != null && previousSession.userId != session.userId;
-      final remoteBundle = await _cloudSyncRepository.loadRemoteForSession(session);
+      final remoteBundle = await _cloudSyncRepository.loadRemoteForSession(
+        session,
+      );
       final remoteHasData = remoteBundle?.hasMeaningfulData == true;
       if (switchedUser && remoteHasData) {
         while (true) {
@@ -583,9 +628,7 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
       return await _inquiryRepository.fetchList(session);
     } catch (error) {
       if (showErrorToast) {
-        await showAppToast(
-          error.toString().replaceFirst('Exception: ', ''),
-        );
+        await showAppToast(error.toString().replaceFirst('Exception: ', ''));
       }
       return const [];
     }
@@ -600,9 +643,9 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
     setState(() => _inquiries = next);
   }
 
-
   void _popToSmsInboxOrRoot() {
-    if (_routeStack.length > 1 && _routeStack[_routeStack.length - 2].kind == _ShellRouteKind.smsInbox) {
+    if (_routeStack.length > 1 &&
+        _routeStack[_routeStack.length - 2].kind == _ShellRouteKind.smsInbox) {
       _routeStack
         ..removeLast()
         ..removeLast()
@@ -619,7 +662,9 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
       return;
     }
     setState(() {
-      _routeStack.add(_ShellRoute.editor(existing: existing, smsDraft: smsDraft));
+      _routeStack.add(
+        _ShellRoute.editor(existing: existing, smsDraft: smsDraft),
+      );
     });
   }
 
@@ -674,10 +719,7 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
                             Navigator.of(sheetContext).pop();
                           },
                     onSave: (entry) async {
-                      await _saveEntry(
-                        entry,
-                        stayOnCurrentRoute: true,
-                      );
+                      await _saveEntry(entry, stayOnCurrentRoute: true);
                       if (!sheetContext.mounted) return;
                       Navigator.of(sheetContext).pop();
                     },
@@ -691,21 +733,19 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
     );
   }
 
-  Future<void> _showBudgetSettingsSheet({
-    required DateTime month,
-  }) async {
+  Future<void> _showBudgetSettingsSheet({required DateTime month}) async {
     final monthKey = DateFormat('yyyy-MM').format(month);
-    final monthBudgets = _budgets
-        .where((budget) => budget.monthKey == monthKey)
-        .toList()
-      ..sort((a, b) => a.category.compareTo(b.category));
-    final categorySuggestions = _entries
-        .where((entry) => entry.type != EntryType.transfer)
-        .map((entry) => entry.category.trim())
-        .where((category) => category.isNotEmpty)
-        .toSet()
-        .toList()
-      ..sort();
+    final monthBudgets =
+        _budgets.where((budget) => budget.monthKey == monthKey).toList()
+          ..sort((a, b) => a.category.compareTo(b.category));
+    final categorySuggestions =
+        _entries
+            .where((entry) => entry.type != EntryType.transfer)
+            .map((entry) => entry.category.trim())
+            .where((category) => category.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
 
     await showModalBottomSheet<void>(
       context: context,
@@ -756,7 +796,9 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
   }
 
   Future<void> _importRecentSms(int days) async {
-    final drafts = await _smsAutomationRepository.importRecentMessages(recentDays: days);
+    final drafts = await _smsAutomationRepository.importRecentMessages(
+      recentDays: days,
+    );
     if (!mounted) return;
     setState(() => _smsDrafts = drafts);
   }
@@ -767,7 +809,9 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
     }
     if (!mounted) return;
     setState(() {
-      _smsDrafts = _smsDrafts.where((draft) => !ids.contains(draft.id)).toList();
+      _smsDrafts = _smsDrafts
+          .where((draft) => !ids.contains(draft.id))
+          .toList();
     });
   }
 
@@ -796,7 +840,9 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
       await showAppToast('금융문자가 아닌것같아요!');
       return;
     }
-    final merged = await _smsAutomationRepository.saveInboxDrafts([parsed.toDraft()]);
+    final merged = await _smsAutomationRepository.saveInboxDrafts([
+      parsed.toDraft(),
+    ]);
     if (!mounted) return;
     setState(() => _smsDrafts = merged);
     await showAppToast('문자함에 추가했습니다.');
@@ -812,7 +858,9 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
   Future<void> _removeSmsDraft(String id) async {
     await _smsAutomationRepository.removeDraft(id);
     if (!mounted) return;
-    setState(() => _smsDrafts = _smsDrafts.where((draft) => draft.id != id).toList());
+    setState(
+      () => _smsDrafts = _smsDrafts.where((draft) => draft.id != id).toList(),
+    );
   }
 
   Future<void> _bindSmsListenerIfNeeded() async {
@@ -852,10 +900,9 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
       return;
     }
     final pendingMms = await _smsAutomationRepository.consumePendingMms();
-    final pendingNotifications =
-        _financialAppNotificationEnabled
-            ? await _smsAutomationRepository.consumePendingAppNotifications()
-            : const <WalletKeeperSmsDraft>[];
+    final pendingNotifications = _financialAppNotificationEnabled
+        ? await _smsAutomationRepository.consumePendingAppNotifications()
+        : const <WalletKeeperSmsDraft>[];
     final pendingMessages = [...pendingMms, ...pendingNotifications]
       ..sort((a, b) => b.date.compareTo(a.date));
     if (pendingMessages.isEmpty) return;
@@ -886,7 +933,9 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
       }
       return;
     }
-    final merged = await _smsAutomationRepository.saveInboxDrafts(pendingMessages);
+    final merged = await _smsAutomationRepository.saveInboxDrafts(
+      pendingMessages,
+    );
     if (!mounted) return;
     setState(() => _smsDrafts = merged);
   }
@@ -899,7 +948,9 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
     }
     if (!Platform.isAndroid) return;
     try {
-      final route = await _mmsRouteChannel.invokeMethod<String>('consumeLaunchRoute');
+      final route = await _mmsRouteChannel.invokeMethod<String>(
+        'consumeLaunchRoute',
+      );
       if (route == _smsInboxNotificationPayload) {
         await _openSmsPageFromNotification();
       }
@@ -918,8 +969,10 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
       setState(() => _entries = loadedEntries);
     } else {
       setState(() {
-        _smsDrafts = [result.draft, ..._smsDrafts.where((item) => item.id != result.draft.id)]
-          ..sort((a, b) => b.date.compareTo(a.date));
+        _smsDrafts = [
+          result.draft,
+          ..._smsDrafts.where((item) => item.id != result.draft.id),
+        ]..sort((a, b) => b.date.compareTo(a.date));
       });
     }
     if (_smsSettings.showNotification) {
@@ -933,7 +986,8 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
   Future<bool> _handleBack() async {
     if (_currentRoute.kind == _ShellRouteKind.root) {
       final now = DateTime.now();
-      final shouldExit = _lastBackPressedAt != null &&
+      final shouldExit =
+          _lastBackPressedAt != null &&
           now.difference(_lastBackPressedAt!) <= const Duration(seconds: 2);
       if (shouldExit) {
         return true;
@@ -943,13 +997,14 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
       return false;
     }
     if (_currentRoute.kind == _ShellRouteKind.editor) {
-      final canLeave = await _editorPageKey.currentState?.confirmDiscardIfNeeded() ?? true;
+      final canLeave =
+          await _editorPageKey.currentState?.confirmDiscardIfNeeded() ?? true;
       if (!canLeave) return false;
     }
     if (_currentRoute.kind == _ShellRouteKind.settingsInquiryCompose) {
       final canLeave =
           await _inquiryComposePageKey.currentState?.confirmDiscardIfNeeded() ??
-              true;
+          true;
       if (!canLeave) return false;
     }
     setState(() => _routeStack.removeLast());
@@ -959,7 +1014,8 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
   Future<void> _closeEditorAndSelectTab(int index) async {
     final shouldResetOverview = index == 0 && _selectedTab == 0;
     if (_currentRoute.kind == _ShellRouteKind.editor) {
-      final canLeave = await _editorPageKey.currentState?.confirmDiscardIfNeeded() ?? true;
+      final canLeave =
+          await _editorPageKey.currentState?.confirmDiscardIfNeeded() ?? true;
       if (!canLeave) return;
       if (!mounted) return;
       setState(() {
@@ -979,7 +1035,7 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
     if (_currentRoute.kind == _ShellRouteKind.settingsInquiryCompose) {
       final canLeave =
           await _inquiryComposePageKey.currentState?.confirmDiscardIfNeeded() ??
-              true;
+          true;
       if (!canLeave) return;
       if (!mounted) return;
       setState(() {
@@ -1027,8 +1083,8 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
         _currentRoute.kind == _ShellRouteKind.assetFlowHistory;
     final bottomOverlayHeight = showBottomBar
         ? _walletKeeperBottomNavSectionHeight +
-            MediaQuery.paddingOf(context).bottom +
-            _bottomBannerHeight
+              MediaQuery.paddingOf(context).bottom +
+              _bottomBannerHeight
         : 0.0;
     final systemBottomInset = MediaQuery.paddingOf(context).bottom;
 
@@ -1043,7 +1099,8 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
             budgets: _budgets,
             smsDraftCount: _smsDrafts.length,
             selectedTab: _selectedOverviewTab,
-            onSelectedTabChanged: (index) => setState(() => _selectedOverviewTab = index),
+            onSelectedTabChanged: (index) =>
+                setState(() => _selectedOverviewTab = index),
             onEdit: ({existing}) => _showEntryEditorSheet(existing: existing),
             onOpenBudgetSettings: ({required month}) =>
                 _showBudgetSettingsSheet(month: month),
@@ -1052,30 +1109,52 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
               await _deleteEntry(entry);
             },
           ),
-          StatsPage(
-            entries: _entries,
-          ),
+          StatsPage(entries: _entries),
           AssetPage(
             entries: _entries,
             session: _session,
-            onOpenUpcomingExpenses: () => setState(() => _routeStack.add(const _ShellRoute.assetUpcomingHistory())),
-            onOpenFlowHistory: () => setState(() => _routeStack.add(const _ShellRoute.assetFlowHistory())),
+            onOpenUpcomingExpenses: () => setState(
+              () => _routeStack.add(const _ShellRoute.assetUpcomingHistory()),
+            ),
+            onOpenFlowHistory: () => setState(
+              () => _routeStack.add(const _ShellRoute.assetFlowHistory()),
+            ),
           ),
           SettingsPage(
             session: _session,
             smsSettings: _smsSettings,
-            onOpenSmsSettings: () => setState(() => _routeStack.add(const _ShellRoute.smsSettings())),
-            onOpenProfileInfo: () => setState(() => _routeStack.add(const _ShellRoute.settingsProfile())),
+            onOpenSmsSettings: () => setState(
+              () => _routeStack.add(const _ShellRoute.smsSettings()),
+            ),
+            onOpenProfileInfo: () => setState(
+              () => _routeStack.add(const _ShellRoute.settingsProfile()),
+            ),
             onOpenInquiryList: () {
               _refreshInquiries();
-              setState(() => _routeStack.add(const _ShellRoute.settingsInquiryList()));
+              setState(
+                () => _routeStack.add(const _ShellRoute.settingsInquiryList()),
+              );
             },
-            onOpenTermsInfo: () => setState(() => _routeStack.add(const _ShellRoute.settingsTerms())),
+            onOpenTermsInfo: () => setState(
+              () => _routeStack.add(const _ShellRoute.settingsTerms()),
+            ),
             onLogout: _logoutToGuest,
-            onSignInWithKakao: () => _runSocialSignIn(_accountRepository.signInWithKakao, '로그인되었습니다.'),
-            onSignInWithGoogle: () => _runSocialSignIn(_accountRepository.signInWithGoogle, '로그인되었습니다.'),
-            onSignInWithNaver: () => _runSocialSignIn(_accountRepository.signInWithNaver, '로그인되었습니다.'),
-            onSignInWithApple: () => _runSocialSignIn(_accountRepository.signInWithApple, '로그인되었습니다.'),
+            onSignInWithKakao: () => _runSocialSignIn(
+              _accountRepository.signInWithKakao,
+              '로그인되었습니다.',
+            ),
+            onSignInWithGoogle: () => _runSocialSignIn(
+              _accountRepository.signInWithGoogle,
+              '로그인되었습니다.',
+            ),
+            onSignInWithNaver: () => _runSocialSignIn(
+              _accountRepository.signInWithNaver,
+              '로그인되었습니다.',
+            ),
+            onSignInWithApple: () => _runSocialSignIn(
+              _accountRepository.signInWithApple,
+              '로그인되었습니다.',
+            ),
           ),
         ][_selectedTab];
         break;
@@ -1085,7 +1164,8 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
           featureAccess: widget.featureAccess,
           settings: _smsSettings,
           onBack: () => setState(() => _routeStack.removeLast()),
-          onOpenSettingsPage: () => setState(() => _routeStack.add(const _ShellRoute.smsSettings())),
+          onOpenSettingsPage: () =>
+              setState(() => _routeStack.add(const _ShellRoute.smsSettings())),
           onImportRecent: _importRecentSms,
           onOpenDraft: (draft) => _openComposer(smsDraft: draft),
           onRequestSmsAccess: widget.onRequestFeatureAccess,
@@ -1116,10 +1196,14 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
           inquiries: _inquiries,
           onBack: () => setState(() => _routeStack.removeLast()),
           onRefresh: () => _refreshInquiries(showErrorToast: true),
-          onOpenDetail: (inquiry) =>
-              setState(() => _routeStack.add(_ShellRoute.settingsInquiryDetail(inquiry: inquiry))),
-          onOpenCompose: () =>
-              setState(() => _routeStack.add(const _ShellRoute.settingsInquiryCompose())),
+          onOpenDetail: (inquiry) => setState(
+            () => _routeStack.add(
+              _ShellRoute.settingsInquiryDetail(inquiry: inquiry),
+            ),
+          ),
+          onOpenCompose: () => setState(
+            () => _routeStack.add(const _ShellRoute.settingsInquiryCompose()),
+          ),
         );
         break;
       case _ShellRouteKind.settingsInquiryDetail:
@@ -1134,8 +1218,9 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
           session: _session,
           onBack: () async {
             final canLeave =
-                await _inquiryComposePageKey.currentState?.confirmDiscardIfNeeded() ??
-                    true;
+                await _inquiryComposePageKey.currentState
+                    ?.confirmDiscardIfNeeded() ??
+                true;
             if (!canLeave || !mounted) return;
             setState(() => _routeStack.removeLast());
           },
@@ -1168,7 +1253,9 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
           featureAccess: widget.featureAccess,
           onRequestSmsAccess: widget.onRequestFeatureAccess,
           onCancel: () async {
-            final canLeave = await _editorPageKey.currentState?.confirmDiscardIfNeeded() ?? true;
+            final canLeave =
+                await _editorPageKey.currentState?.confirmDiscardIfNeeded() ??
+                true;
             if (!canLeave || !mounted) return;
             setState(() => _routeStack.removeLast());
           },
@@ -1186,10 +1273,8 @@ class _LedgerHomePageState extends State<LedgerHomePage> with WidgetsBindingObse
                   if (!deleted || !mounted) return;
                   setState(() => _routeStack.removeLast());
                 },
-          onSave: (entry) => _saveEntry(
-            entry,
-            consumedDraftId: _currentRoute.smsDraft?.id,
-          ),
+          onSave: (entry) =>
+              _saveEntry(entry, consumedDraftId: _currentRoute.smsDraft?.id),
         );
         break;
     }
