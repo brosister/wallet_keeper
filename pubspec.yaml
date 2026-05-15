@@ -1,7 +1,7 @@
 name: wallet_keeper
 description: "Wallet Keeper - simple household ledger app."
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.0.0+3
 
 environment:
   sdk: ^3.11.4
