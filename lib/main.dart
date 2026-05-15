@@ -92,7 +92,8 @@ WalletKeeperAdSettings? _walletKeeperAdSettingsCache;
 Future<void>? _walletKeeperCoreServicesFuture;
 
 Future<void> _ensureWalletKeeperCoreServicesInitialized() {
-  return _walletKeeperCoreServicesFuture ??= _initializeWalletKeeperCoreServices();
+  return _walletKeeperCoreServicesFuture ??=
+      _initializeWalletKeeperCoreServices();
 }
 
 Future<void> _initializeWalletKeeperCoreServices() async {
@@ -137,7 +138,12 @@ Future<void> _initializeWalletKeeperCoreServices() async {
 
 Future<void> _initializeLocalNotifications() async {
   const android = AndroidInitializationSettings('@mipmap/ic_launcher');
-  const settings = InitializationSettings(android: android);
+  const darwin = DarwinInitializationSettings();
+  const settings = InitializationSettings(
+    android: android,
+    iOS: darwin,
+    macOS: darwin,
+  );
   await _localNotifications.initialize(
     settings,
     onDidReceiveNotificationResponse: (response) {
