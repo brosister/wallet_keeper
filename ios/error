@@ -1,67 +1,98 @@
--- LLDB integration loaded --
-`UIScene` lifecycle will soon be required. Failure to adopt will result in an assert in the future.
-FlutterView implements focusItemsInRect: - caching for linear focus movement is limited as long as this view is on screen.
-WalletKeeper iOS: AppDelegate didFinishLaunching started
-11.15.0 - [FirebaseCore][I-COR000012] Could not locate configuration file: 'GoogleService-Info.plist'.
-WalletKeeper iOS: GeneratedPluginRegistrant finished
-WalletKeeper iOS: super.application finished = true
-응용 프로그램을 위한 유효한 ‘aps-environment’ 인타이틀먼트 문자열을 찾을 수 없습니다.
-응용 프로그램을 위한 유효한 ‘aps-environment’ 인타이틀먼트 문자열을 찾을 수 없습니다.
-11.15.0 - [FirebaseCore][I-COR000005] No app has been configured yet.
-flutter: Failed to initialize Firebase: [core/not-initialized] Firebase has not been correctly initialized.
-flutter:
-flutter: Usually this means you've attempted to use a Firebase service before calling `Firebase.initializeApp`.
-flutter:
-flutter: View the documentation for more information: https://firebase.google.com/docs/flutter/setup
-flutter:
-flutter: #0      MethodChannelFirebase.initializeApp (package:firebase_core_platform_interface/src/method_channel/method_channel_firebase.dart:117)
-flutter: <asynchronous suspension>
-flutter: #1      Firebase.initializeApp (package:firebase_core/src/firebase.dart:66)
-flutter: <asynchronous suspension>
-flutter: <asynchronous suspension>
-flutter: #3      _initializeWalletKeeperCoreServices (package:wallet_keeper/main.dart:101)
-flutter: <asynchronous suspension>
-flutter: (elided one frame from dart:async)
-flutter: Failed to initialize local notifications: Invalid argument(s): iOS settings must be set when targeting iOS platform.
-flutter: #0      FlutterLocalNotificationsPlugin.initialize (package:flutter_local_notifications/src/flutter_local_notifications_plugin.dart:148)
-flutter: #1      _initializeLocalNotifications (package:wallet_keeper/main.dart:141)
-flutter: #2      _initializeWalletKeeperCoreServices (package:wallet_keeper/main.dart:131)
-flutter: <asynchronous suspension>
-Could not create a sandbox extension for '/var/containers/Bundle/Application/800F0135-CDBE-4031-8C03-FA2588E53CB1/Runner.app'
-GPU process (0x11d0cc1e0) took 3.749751 seconds to launch
-WebContent process (0x11d0740c0) took 3.777295 seconds to launch
-Networking process (0x11d0f4c40) took 1.380582 seconds to launch
-flutter: [core/no-app] No Firebase App '[DEFAULT]' has been created - call Firebase.initializeApp()
-flutter: #0      MethodChannelFirebase.app (package:firebase_core_platform_interface/src/method_channel/method_channel_firebase.dart:190)
-flutter: #1      Firebase.app (package:firebase_core/src/firebase.dart:79)
-flutter: #2      FirebaseAuth.instance (package:firebase_auth/src/firebase_auth.dart:38)
-flutter: #3      new WalletKeeperAccountRepository (package:wallet_keeper/src/ledger_domain.dart:2381)
-flutter: #4      new _LedgerHomePageState (package:wallet_keeper/src/ledger_home_page.dart:112)
-flutter: #5      LedgerHomePage.createState (package:wallet_keeper/src/ledger_home_page.dart:95)
-flutter: #6      new StatefulElement (package:flutter/src/widgets/framework.dart:5902)
-flutter: #7      StatefulWidget.createElement (package:flutter/src/widgets/framework.dart:779)
-flutter: #8      Element.inflateWidget (package:flutter/src/widgets/framework.dart:4574)
-flutter: #9      Element.updateChild (package:flutter/src/widgets/framework.dart:4059)
-flutter: #10     ComponentElement.performRebuild (package:flutter/src/widgets/framework.dart:5841)
-flutter: #11     StatefulElement.performRebuild (package:flutter/src/widgets/framework.dart:5982)
-flutter: #12     Element.rebuild (package:flutter/src/widgets/framework.dart:5529)
-flutter: #13     ComponentElement._firstBuild (package:flutter/src/widgets/framework.dart:5799)
-flutter: #14     StatefulElement._firstBuild (package:flutter/src/widgets/framework.dart:5973)
-flutter: #15     ComponentElement.mount (package:flutter/src/widgets/framework.dart:5793)
-flutter: #16     Element.inflateWidget (package:flutter/src/widgets/framework.dart:4587)
-flutter: #17     Element.updateChild (package:flutter/src/widgets/framework.dart:4053)
-flutter: #18     ComponentElement.performRebuild (package:flutter/src/widgets/framework.dart:5841)
-flutter: #19     StatefulElement.performRebuild (package:flutter/src/widgets/framework.dart:5982)
-flutter: #20     Element.rebuild (package:flutter/src/widgets/framework.dart:5529)
-flutter: #21     BuildScope._tryRebuild (package:flutter/src/widgets/framework.dart:2750)
-flutter: #22     BuildScope._flushDirtyElements (package:flutter/src/widgets/framework.dart:2807)
-flutter: #23     BuildOwner.buildScope (package:flutter/src/widgets/framework.dart:3111)
-flutter: #24     WidgetsBinding.drawFrame (package:flutter/src/widgets/binding.dart:1302)
-flutter: #25     RendererBinding._handlePersistentFrameCallback (package:flutter/src/rendering/binding.dart:495)
-flutter: #26     SchedulerBinding._invokeFrameCallback (package:flutter/src/scheduler/binding.dart:1430)
-flutter: #27     SchedulerBinding.handleDrawFrame (package:flutter/src/scheduler/binding.dart:1345)
-flutter: #28     SchedulerBinding._handleDrawFrame (package:flutter/src/scheduler/binding.dart:1198)
-flutter: #29     _invoke (dart:ui/hooks.dart:356)
-flutter: #30     PlatformDispatcher._drawFrame (dart:ui/platform_dispatcher.dart:444)
-flutter: #31     _drawFrame (dart:ui/hooks.dart:328)
-WebContent[20507] Unable to hide query parameters from script (missing data)
+LLDB RPC Server has exited
+Domain: IDEDebugSessionErrorDomain
+Code: 30
+Failure Reason: The LLDB RPC server (pid: 36778) has exited unexpectedly (status 0, signal 13).
+Recovery Suggestion: Please collect and attach a [sysdiagnose](https://developer.apple.com/bug-reporting/profiles-and-logs/) from the Mac running Xcode when reporting issues.
+User Info: {
+    DVTErrorCreationDateKey = "2026-05-19 13:54:12 +0000";
+    DVTRadarComponentKey = 855031;
+    IDERunOperationFailingWorker = DBGLLDBLauncher;
+}
+--
+Could not attach to “Runner”
+Domain: IDEDebugSessionErrorDomain
+Code: 3
+Failure Reason: LLDB provided no error string.
+User Info: {
+    DVTRadarComponentKey = 855031;
+    RawUnderlyingErrorMessage = "LLDB provided no error string.";
+}
+--
+
+Event Metadata: com.apple.dt.IDERunOperationWorkerFinished : {
+    "device_identifier" = "00008101-0002746E0C10001E";
+    "device_isCoreDevice" = 1;
+    "device_model" = "iPhone13,3";
+    "device_osBuild" = "26.2 (23C55)";
+    "device_osBuild_monotonic" = 2302005500;
+    "device_os_variant" = 1;
+    "device_platform" = "com.apple.platform.iphoneos";
+    "device_platform_family" = 2;
+    "device_reality" = 1;
+    "device_thinningType" = "iPhone13,3";
+    "device_transport" = 1;
+    "launchSession_schemeCommand" = Run;
+    "launchSession_schemeCommand_enum" = 1;
+    "launchSession_targetArch" = arm64;
+    "launchSession_targetArch_enum" = 6;
+    "operation_duration_ms" = 1358542;
+    "operation_errorCode" = 30;
+    "operation_errorDomain" = IDEDebugSessionErrorDomain;
+    "operation_errorWorker" = DBGLLDBLauncher;
+    "operation_error_reportable" = 1;
+    "operation_name" = IDERunOperationWorkerGroup;
+    "param_consoleMode" = 1;
+    "param_debugger_attachToExtensions" = 0;
+    "param_debugger_attachToXPC" = 1;
+    "param_debugger_type" = 3;
+    "param_destination_isProxy" = 0;
+    "param_destination_platform" = "com.apple.platform.iphoneos";
+    "param_diag_MTE_enable" = 0;
+    "param_diag_MainThreadChecker_stopOnIssue" = 0;
+    "param_diag_MallocStackLogging_enableDuringAttach" = 0;
+    "param_diag_MallocStackLogging_enableForXPC" = 1;
+    "param_diag_allowLocationSimulation" = 1;
+    "param_diag_checker_mtc_enable" = 1;
+    "param_diag_checker_tpc_enable" = 1;
+    "param_diag_gpu_frameCapture_enable" = 0;
+    "param_diag_gpu_shaderValidation_enable" = 0;
+    "param_diag_gpu_validation_enable" = 1;
+    "param_diag_guardMalloc_enable" = 0;
+    "param_diag_memoryGraphOnResourceException" = 0;
+    "param_diag_queueDebugging_enable" = 1;
+    "param_diag_runtimeProfile_generate" = 0;
+    "param_diag_sanitizer_asan_enable" = 0;
+    "param_diag_sanitizer_tsan_enable" = 0;
+    "param_diag_sanitizer_tsan_stopOnIssue" = 0;
+    "param_diag_sanitizer_ubsan_enable" = 0;
+    "param_diag_sanitizer_ubsan_stopOnIssue" = 0;
+    "param_diag_showNonLocalizedStrings" = 0;
+    "param_diag_viewDebugging_enabled" = 1;
+    "param_diag_viewDebugging_insertDylibOnLaunch" = 1;
+    "param_install_style" = 2;
+    "param_launcher_UID" = 2;
+    "param_launcher_allowDeviceSensorReplayData" = 0;
+    "param_launcher_kind" = 0;
+    "param_launcher_style" = 99;
+    "param_launcher_substyle" = 0;
+    "param_lldbVersion_component_idx_1" = 0;
+    "param_lldbVersion_monotonic" = 210000160004;
+    "param_runnable_appExtensionHostRunMode" = 0;
+    "param_runnable_productType" = "com.apple.product-type.application";
+    "param_testing_launchedForTesting" = 0;
+    "param_testing_suppressSimulatorApp" = 0;
+    "param_testing_usingCLI" = 0;
+    "sdk_canonicalName" = "iphoneos26.4";
+    "sdk_osVersion" = "26.4";
+    "sdk_platformID" = 2;
+    "sdk_variant" = iphoneos;
+    "sdk_version_monotonic" = 2304023700;
+}
+--
+
+
+System Information
+
+macOS Version 26.4 (Build 25E246)
+Xcode 26.4 (24909) (Build 17E192)
+Timestamp: 2026-05-19T22:54:12+09:00
