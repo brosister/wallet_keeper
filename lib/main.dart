@@ -68,6 +68,8 @@ const _walletKeeperSmsParserVersion = '2026.05.07-r1';
 const _walletKeeperKakaoNativeKey = 'e0888b88d12ae3a234b022db1d2c723e';
 const _walletKeeperGoogleServerClientId =
     '136302078709-pn1u0n5rrvrbn6feu41h4eg85i45j00t.apps.googleusercontent.com';
+const _walletKeeperGoogleIosClientId =
+    '136302078709-3hlbc6og5hnc13lmo7ginpqq10lun7np.apps.googleusercontent.com';
 const _walletKeeperNaverClientId = '';
 const _walletKeeperNaverClientSecret = '';
 const _walletKeeperNaverClientName = '지갑지켜';

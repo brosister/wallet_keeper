@@ -2429,6 +2429,7 @@ class WalletKeeperAccountRepository {
 
   final DeviceInfoPlugin _deviceInfo = DeviceInfoPlugin();
   final GoogleSignIn _googleSignIn = GoogleSignIn(
+    clientId: Platform.isIOS ? _walletKeeperGoogleIosClientId : null,
     serverClientId: _walletKeeperGoogleServerClientId,
   );
   firebase_auth.FirebaseAuth get _firebaseAuth =>
