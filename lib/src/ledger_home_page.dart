@@ -603,8 +603,23 @@ class _LedgerHomePageState extends State<LedgerHomePage>
       unawaited(_registerPushTokenSilently());
       await showAppToast(successMessage);
     } catch (error) {
-      await showAppToast(error.toString().replaceFirst('Exception: ', ''));
+      await showAppToast(_friendlySocialSignInError(error));
     }
+  }
+
+  String _friendlySocialSignInError(Object error) {
+    final message = error.toString().replaceFirst('Exception: ', '').trim();
+    if (message.contains('Kakao') ||
+        message.contains('kakao') ||
+        message.contains('카카오') ||
+        message.contains('CANCELED') ||
+        message.contains('cancel')) {
+      return '카카오 로그인을 완료하지 못했습니다.';
+    }
+    if (message.isEmpty) {
+      return '로그인을 완료하지 못했습니다.';
+    }
+    return message.length > 48 ? '로그인을 완료하지 못했습니다.' : message;
   }
 
   Future<void> _logoutToGuest() async {
@@ -614,6 +629,69 @@ class _LedgerHomePageState extends State<LedgerHomePage>
       await _preserveLocalAndSyncToSession(session, inquiries);
       unawaited(_registerPushTokenSilently());
       await showAppToast('로그아웃되었습니다.');
+    } catch (error) {
+      await showAppToast(error.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  Future<void> _deleteAccount() async {
+    final session = _session;
+    if (session == null || session.isGuest) {
+      await showAppToast('삭제할 회원 계정이 없습니다.');
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+        title: const Text('계정을 삭제할까요?'),
+        content: const Text(
+          '계정과 서버에 저장된 가계부 데이터, 문의 내역, 푸시 토큰이 삭제됩니다. 이 작업은 되돌릴 수 없습니다.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Color(0xFFE76158),
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('삭제'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      await _accountRepository.deleteCurrentAccount();
+      await Future.wait([
+        _repository.clear(),
+        _memoRepository.clear(),
+        _budgetRepository.clear(),
+        _smsAutomationRepository.clearDrafts(),
+      ]);
+      final guest = await _accountRepository.bootstrapGuest();
+      if (!mounted) return;
+      setState(() {
+        _session = guest;
+        _entries = const [];
+        _memos = const [];
+        _budgets = const [];
+        _inquiries = const [];
+        _smsDrafts = const [];
+        _routeStack
+          ..clear()
+          ..add(const _ShellRoute.root());
+        _selectedTab = 3;
+      });
+      await showAppToast('계정이 삭제되었습니다.');
     } catch (error) {
       await showAppToast(error.toString().replaceFirst('Exception: ', ''));
     }
@@ -773,6 +851,11 @@ class _LedgerHomePageState extends State<LedgerHomePage>
   }
 
   void _openSmsPage() {
+    if (!Platform.isAndroid) {
+      _consumePendingRealtimeMessages();
+      setState(() => _routeStack.add(const _ShellRoute.smsInbox()));
+      return;
+    }
     if (!widget.featureAccess.hasRequiredPermissionAccess) {
       widget.onRequireFeatureOnboarding();
       return;
@@ -783,7 +866,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
 
   Future<void> _openSmsPageFromNotification() async {
     if (!mounted) return;
-    if (!widget.featureAccess.hasRequiredPermissionAccess) {
+    if (Platform.isAndroid && !widget.featureAccess.hasRequiredPermissionAccess) {
       widget.onRequireFeatureOnboarding();
       return;
     }
@@ -1189,6 +1272,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
         page = ProfileInfoPage(
           session: _session,
           onBack: () => setState(() => _routeStack.removeLast()),
+          onDeleteAccount: _deleteAccount,
         );
         break;
       case _ShellRouteKind.settingsInquiryList:

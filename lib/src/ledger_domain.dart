@@ -17,6 +17,11 @@ class LedgerRepository {
       jsonEncode(entries.map((entry) => entry.toJson()).toList()),
     );
   }
+
+  Future<void> clear() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_storageKey);
+  }
 }
 
 class WalletKeeperFeatureAccess {
@@ -1960,6 +1965,11 @@ class WalletKeeperMemoRepository {
       jsonEncode(memos.map((memo) => memo.toJson()).toList()),
     );
   }
+
+  Future<void> clear() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_memoStorageKey);
+  }
 }
 
 class WalletKeeperBudgetRepository {
@@ -1982,6 +1992,11 @@ class WalletKeeperBudgetRepository {
       _budgetStorageKey,
       jsonEncode(budgets.map((budget) => budget.toJson()).toList()),
     );
+  }
+
+  Future<void> clear() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_budgetStorageKey);
   }
 }
 
@@ -2511,6 +2526,12 @@ class WalletKeeperAccountRepository {
     );
   }
 
+  Future<void> clearSessionAndGuestSerial() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_walletKeeperSessionKey);
+    await prefs.remove(_walletKeeperGuestSerialKey);
+  }
+
   Future<WalletKeeperUserSession> bootstrapGuest() async {
     final serial = await getOrCreateGuestSerial();
     final deviceInfo = await getDeviceInfo();
@@ -2541,16 +2562,26 @@ class WalletKeeperAccountRepository {
   }
 
   Future<WalletKeeperUserSession> signInWithKakao() async {
-    OAuthToken token;
-    if (await isKakaoTalkInstalled()) {
-      token = await UserApi.instance.loginWithKakaoTalk();
-    } else {
-      token = await UserApi.instance.loginWithKakaoAccount();
-    }
+    final token = await _requestKakaoLoginToken();
     return _linkSocialAccount(
       provider: 'kakao',
       body: {'accessToken': token.accessToken},
     );
+  }
+
+  Future<OAuthToken> _requestKakaoLoginToken() async {
+    try {
+      if (await isKakaoTalkInstalled()) {
+        try {
+          return await UserApi.instance.loginWithKakaoTalk();
+        } catch (_) {
+          // 카카오톡 앱 로그인 실패 시에도 계정 로그인으로 이어가야 긴 SDK 예외가 노출되지 않는다.
+        }
+      }
+      return await UserApi.instance.loginWithKakaoAccount();
+    } catch (_) {
+      throw Exception('카카오 로그인을 완료하지 못했습니다.');
+    }
   }
 
   Future<WalletKeeperUserSession> signInWithGoogle() async {
@@ -2689,6 +2720,40 @@ class WalletKeeperAccountRepository {
       await NaverLoginSDK.logout();
     } catch (_) {}
     return bootstrapGuest();
+  }
+
+  Future<void> deleteCurrentAccount() async {
+    final session = await loadSession();
+    if (session == null || session.isGuest) {
+      throw Exception('삭제할 회원 계정이 없습니다.');
+    }
+
+    final response = await http.delete(
+      Uri.parse('$_baseUrl/account'),
+      headers: {
+        'Content-Type': 'application/json',
+        if (session.token.isNotEmpty) 'Authorization': 'Bearer ${session.token}',
+      },
+    );
+    final payload =
+        jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    if (response.statusCode != 200 || payload['success'] != true) {
+      throw Exception(payload['message'] ?? '계정 삭제에 실패했습니다.');
+    }
+
+    try {
+      await _googleSignIn.signOut();
+    } catch (_) {}
+    try {
+      await _firebaseAuth.signOut();
+    } catch (_) {}
+    try {
+      await UserApi.instance.logout();
+    } catch (_) {}
+    try {
+      await NaverLoginSDK.logout();
+    } catch (_) {}
+    await clearSessionAndGuestSerial();
   }
 }
 
@@ -2891,8 +2956,39 @@ String formatDate(DateTime date) => DateFormat('yyyy.MM.dd').format(date);
 Future<void> showAppToast(String message) async {
   await Fluttertoast.cancel();
   await Fluttertoast.showToast(
-    msg: message,
+    msg: normalizeToastMessage(message),
     gravity: ToastGravity.BOTTOM,
     toastLength: Toast.LENGTH_SHORT,
   );
+}
+
+String normalizeToastMessage(String message) {
+  final compactMessage = message
+      .replaceFirst('Exception: ', '')
+      .replaceFirst('PlatformException(', '')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+
+  if (compactMessage.isEmpty) {
+    return '처리 중 문제가 발생했습니다.';
+  }
+
+  final lowerMessage = compactMessage.toLowerCase();
+  if (lowerMessage.contains('platformexception') ||
+      lowerMessage.contains('sign_in') ||
+      lowerMessage.contains('authorization') ||
+      lowerMessage.contains('firebase') ||
+      lowerMessage.contains('socketexception') ||
+      lowerMessage.contains('timeoutexception') ||
+      lowerMessage.contains('kakao') ||
+      lowerMessage.contains('google') ||
+      lowerMessage.contains('apple')) {
+    return '처리 중 문제가 발생했습니다.';
+  }
+
+  const maxLength = 42;
+  if (compactMessage.length <= maxLength) {
+    return compactMessage;
+  }
+  return '${compactMessage.substring(0, maxLength)}...';
 }

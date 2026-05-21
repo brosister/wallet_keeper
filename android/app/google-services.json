@@ -61,6 +61,13 @@
             {
               "client_id": "136302078709-pn1u0n5rrvrbn6feu41h4eg85i45j00t.apps.googleusercontent.com",
               "client_type": 3
+            },
+            {
+              "client_id": "136302078709-3hlbc6og5hnc13lmo7ginpqq10lun7np.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.brosister.walletkeeper"
+              }
             }
           ]
         }
@@ -122,6 +129,13 @@
             {
               "client_id": "136302078709-pn1u0n5rrvrbn6feu41h4eg85i45j00t.apps.googleusercontent.com",
               "client_type": 3
+            },
+            {
+              "client_id": "136302078709-3hlbc6og5hnc13lmo7ginpqq10lun7np.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.brosister.walletkeeper"
+              }
             }
           ]
         }
@@ -183,6 +197,13 @@
             {
               "client_id": "136302078709-pn1u0n5rrvrbn6feu41h4eg85i45j00t.apps.googleusercontent.com",
               "client_type": 3
+            },
+            {
+              "client_id": "136302078709-3hlbc6og5hnc13lmo7ginpqq10lun7np.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.brosister.walletkeeper"
+              }
             }
           ]
         }
@@ -196,6 +217,14 @@
         }
       },
       "oauth_client": [
+        {
+          "client_id": "136302078709-bp3f57umj0ml3r4i9e3gt92s5gff6s5p.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.brosister.walletkeeper",
+            "certificate_hash": "807de96c1bdd8ce7ba8da8e3aa7c87f144464be3"
+          }
+        },
         {
           "client_id": "136302078709-fiffeegjkm8tskk9pjre5lljijqqbrob.apps.googleusercontent.com",
           "client_type": 1,
@@ -244,6 +273,13 @@
             {
               "client_id": "136302078709-pn1u0n5rrvrbn6feu41h4eg85i45j00t.apps.googleusercontent.com",
               "client_type": 3
+            },
+            {
+              "client_id": "136302078709-3hlbc6og5hnc13lmo7ginpqq10lun7np.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.brosister.walletkeeper"
+              }
             }
           ]
         }

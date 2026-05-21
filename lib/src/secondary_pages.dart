@@ -3585,10 +3585,12 @@ class ProfileInfoPage extends StatelessWidget {
     super.key,
     required this.session,
     required this.onBack,
+    required this.onDeleteAccount,
   });
 
   final WalletKeeperUserSession? session;
   final VoidCallback onBack;
+  final Future<void> Function() onDeleteAccount;
 
   @override
   Widget build(BuildContext context) {
@@ -3617,6 +3619,10 @@ class ProfileInfoPage extends StatelessWidget {
                 ],
                 const SizedBox(height: 14),
                 _SettingsKeyValueCard(rows: rows),
+                if (account != null && !account.isGuest) ...[
+                  const SizedBox(height: 18),
+                  _AccountDeleteCard(onDelete: onDeleteAccount),
+                ],
               ],
             ),
           ),
@@ -7882,6 +7888,91 @@ class _ProfileLinkedProviderCard extends StatelessWidget {
                 ),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AccountDeleteCard extends StatefulWidget {
+  const _AccountDeleteCard({required this.onDelete});
+
+  final Future<void> Function() onDelete;
+
+  @override
+  State<_AccountDeleteCard> createState() => _AccountDeleteCardState();
+}
+
+class _AccountDeleteCardState extends State<_AccountDeleteCard> {
+  bool _deleting = false;
+
+  Future<void> _runDelete() async {
+    if (_deleting) return;
+    setState(() => _deleting = true);
+    try {
+      await widget.onDelete();
+    } finally {
+      if (mounted) {
+        setState(() => _deleting = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFFFD1CD)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '계정 삭제',
+            style: TextStyle(
+              color: Color(0xFFE76158),
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            '회원 계정과 서버에 저장된 데이터를 삭제합니다. 삭제 후 복구할 수 없습니다.',
+            style: TextStyle(
+              color: Color(0xFF7B8491),
+              fontSize: 12,
+              height: 1.45,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            height: 46,
+            child: OutlinedButton(
+              onPressed: _deleting ? null : _runDelete,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFFE76158),
+                side: const BorderSide(color: Color(0xFFE76158)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+              child: _deleting
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text(
+                      '계정 삭제하기',
+                      style: TextStyle(fontWeight: FontWeight.w800),
+                    ),
+            ),
           ),
         ],
       ),
