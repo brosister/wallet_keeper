@@ -2605,12 +2605,20 @@ class WalletKeeperAccountRepository {
   }
 
   Future<WalletKeeperUserSession> signInWithApple() async {
-    final credential = await SignInWithApple.getAppleIDCredential(
-      scopes: [
-        AppleIDAuthorizationScopes.email,
-        AppleIDAuthorizationScopes.fullName,
-      ],
-    );
+    late final AuthorizationCredentialAppleID credential;
+    try {
+      credential = await SignInWithApple.getAppleIDCredential(
+        scopes: [
+          AppleIDAuthorizationScopes.email,
+          AppleIDAuthorizationScopes.fullName,
+        ],
+      );
+    } on SignInWithAppleAuthorizationException catch (error) {
+      if (error.code == AuthorizationErrorCode.canceled) {
+        throw Exception('Apple 로그인을 취소했습니다.');
+      }
+      rethrow;
+    }
     if (credential.identityToken == null) {
       throw Exception('애플 로그인 토큰이 없습니다.');
     }
@@ -2732,7 +2740,8 @@ class WalletKeeperAccountRepository {
       Uri.parse('$_baseUrl/account'),
       headers: {
         'Content-Type': 'application/json',
-        if (session.token.isNotEmpty) 'Authorization': 'Bearer ${session.token}',
+        if (session.token.isNotEmpty)
+          'Authorization': 'Bearer ${session.token}',
       },
     );
     final payload =

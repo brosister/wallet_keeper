@@ -568,6 +568,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
   }
 
   Future<void> _runSocialSignIn(
+    String provider,
     Future<WalletKeeperUserSession> Function() action,
     String successMessage,
   ) async {
@@ -603,11 +604,39 @@ class _LedgerHomePageState extends State<LedgerHomePage>
       unawaited(_registerPushTokenSilently());
       await showAppToast(successMessage);
     } catch (error) {
-      await showAppToast(_friendlySocialSignInError(error));
+      await showAppToast(_friendlySocialSignInErrorByProvider(provider, error));
     }
   }
 
-  String _friendlySocialSignInError(Object error) {
+  String _friendlySocialSignInErrorByProvider(String provider, Object error) {
+    final message = error.toString().replaceFirst('Exception: ', '').trim();
+    final lowerMessage = message.toLowerCase();
+    final canceled =
+        lowerMessage.contains('canceled') ||
+        lowerMessage.contains('cancelled') ||
+        lowerMessage.contains('cancel');
+    if (provider == 'apple' && canceled) {
+      return 'Apple 로그인을 취소했습니다.';
+    }
+    if (provider == 'kakao' &&
+        (message.contains('Kakao') ||
+            message.contains('kakao') ||
+            lowerMessage.contains('kakao') ||
+            canceled)) {
+      return '카카오 로그인을 완료하지 못했습니다.';
+    }
+    if (provider == 'apple' &&
+        (message.contains('Apple') || lowerMessage.contains('apple'))) {
+      return 'Apple 로그인을 완료하지 못했습니다.';
+    }
+    if (message.isEmpty) {
+      return '로그인을 완료하지 못했습니다.';
+    }
+    return message.length > 48 ? '로그인을 완료하지 못했습니다.' : message;
+  }
+
+  // ignore: unused_element
+  String _friendlySocialSignInError(String provider, Object error) {
     final message = error.toString().replaceFirst('Exception: ', '').trim();
     if (message.contains('Kakao') ||
         message.contains('kakao') ||
@@ -866,7 +895,8 @@ class _LedgerHomePageState extends State<LedgerHomePage>
 
   Future<void> _openSmsPageFromNotification() async {
     if (!mounted) return;
-    if (Platform.isAndroid && !widget.featureAccess.hasRequiredPermissionAccess) {
+    if (Platform.isAndroid &&
+        !widget.featureAccess.hasRequiredPermissionAccess) {
       widget.onRequireFeatureOnboarding();
       return;
     }
@@ -1223,18 +1253,22 @@ class _LedgerHomePageState extends State<LedgerHomePage>
             ),
             onLogout: _logoutToGuest,
             onSignInWithKakao: () => _runSocialSignIn(
+              'kakao',
               _accountRepository.signInWithKakao,
               '로그인되었습니다.',
             ),
             onSignInWithGoogle: () => _runSocialSignIn(
+              'google',
               _accountRepository.signInWithGoogle,
               '로그인되었습니다.',
             ),
             onSignInWithNaver: () => _runSocialSignIn(
+              'naver',
               _accountRepository.signInWithNaver,
               '로그인되었습니다.',
             ),
             onSignInWithApple: () => _runSocialSignIn(
+              'apple',
               _accountRepository.signInWithApple,
               '로그인되었습니다.',
             ),
