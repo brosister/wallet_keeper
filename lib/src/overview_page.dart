@@ -123,9 +123,7 @@ class _OverviewPageState extends State<OverviewPage> {
   }
 
   ({double income, double expense, double total}) _monthSummary(DateTime month) {
-    final monthEntries = widget.entries.where((entry) {
-      return entry.date.year == month.year && entry.date.month == month.month;
-    });
+    final monthEntries = _entriesForMonth(month);
     final income = monthEntries
         .where((entry) => entry.type == EntryType.income)
         .fold<double>(0, (sum, entry) => sum + entry.amount);
@@ -137,9 +135,10 @@ class _OverviewPageState extends State<OverviewPage> {
 
   ({double income, double expense, double total}) _yearSummary(DateTime year) {
     final visibleMonths = _visibleMonthCountForYear(year);
-    final yearEntries = widget.entries.where((entry) {
-      return entry.date.year == year.year && entry.date.month <= visibleMonths;
-    });
+    final yearEntries = <LedgerEntry>[
+      for (var month = 1; month <= visibleMonths; month++)
+        ..._entriesForMonth(DateTime(year.year, month)),
+    ];
     final income = yearEntries
         .where((entry) => entry.type == EntryType.income)
         .fold<double>(0, (sum, entry) => sum + entry.amount);
@@ -149,14 +148,26 @@ class _OverviewPageState extends State<OverviewPage> {
     return (income: income, expense: expense, total: income - expense);
   }
 
+  List<LedgerEntry> _entriesForMonth(DateTime month) {
+    return widget.entries
+        .where((entry) {
+          if (entry.isFixedExpense) return true;
+          return entry.date.year == month.year && entry.date.month == month.month;
+        })
+        .map(
+          (entry) => entry.isFixedExpense
+              ? walletKeeperMaterializeFixedEntryForMonth(entry, month)
+              : entry,
+        )
+        .toList();
+  }
+
   Widget _buildMonthPage({
     required BuildContext context,
     required DateTime month,
     required double bottomInset,
   }) {
-    final monthEntries = widget.entries
-        .where((entry) => entry.date.year == month.year && entry.date.month == month.month)
-        .toList()
+    final monthEntries = _entriesForMonth(month)
       ..sort((a, b) => b.date.compareTo(a.date));
     final grouped = _groupEntriesByDay(monthEntries);
 
@@ -206,7 +217,10 @@ class _OverviewPageState extends State<OverviewPage> {
       padding: EdgeInsets.fromLTRB(0, 0, 0, bottomInset + 28),
       children: [
         _MonthlyLedgerTab(
-          entries: widget.entries,
+          entries: <LedgerEntry>[
+            for (var month = 1; month <= visibleMonths; month++)
+              ..._entriesForMonth(DateTime(year.year, month)),
+          ],
           year: year,
           visibleMonths: visibleMonths,
           expandedMonth: _expandedMonthlyAccordionMonth,
@@ -1394,6 +1408,9 @@ class _CalendarSelectedDayRowState extends State<_CalendarSelectedDayRow> {
 }
 
 String _buildCalendarDetailLine(LedgerEntry entry) {
+  if (entry.isFixedExpense) {
+    return '고정비 | 매월 ${entry.fixedDay}일';
+  }
   final cleanedNote = _cleanEntryDisplayNote(entry.note);
   final primary = entry.title.trim();
   final secondary = cleanedNote.split('\n').first.trim();
@@ -1404,6 +1421,9 @@ String _buildCalendarDetailLine(LedgerEntry entry) {
 }
 
 Color _calendarEntryAccent(LedgerEntry entry) {
+  if (entry.isFixedExpense) {
+    return const Color(0xFFE76158);
+  }
   final category = entry.category.toLowerCase();
   if (category.contains('식') || category.contains('food') || category.contains('cafe')) {
     return const Color(0xFFFFA83D);
@@ -2351,6 +2371,9 @@ String _compactDailyAmount(double amount) {
 }
 
 IconData _entryCategoryIcon(LedgerEntry entry) {
+  if (entry.isFixedExpense) {
+    return Icons.event_repeat_rounded;
+  }
   return _walletKeeperCategoryDisplayIcon(
     entry.category,
     fallbackType: entry.type,

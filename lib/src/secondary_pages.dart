@@ -417,7 +417,11 @@ class _StatsPageState extends State<StatsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final periodEntries = widget.entries
+    final periodEntries = _statsEntriesForRange(
+      widget.entries,
+      start: _periodStart,
+      end: _periodEnd,
+    )
         .where(
           (entry) =>
               !entry.date.isBefore(_periodStart) &&
@@ -430,12 +434,19 @@ class _StatsPageState extends State<StatsPage> {
     final expenseTotal = periodEntries
         .where((entry) => entry.type == EntryType.expense)
         .fold<double>(0, (sum, entry) => sum + entry.amount);
+    final fixedExpenseTotal = periodEntries
+        .where((entry) => entry.isFixedExpense)
+        .fold<double>(0, (sum, entry) => sum + entry.amount);
+    final normalExpenseTotal = expenseTotal - fixedExpenseTotal;
     final targetType = _selectedKind == 0 ? EntryType.income : EntryType.expense;
     final filtered = periodEntries.where((entry) => entry.type == targetType).toList();
     final total = filtered.fold<double>(0, (sum, entry) => sum + entry.amount);
     final byCategory = <String, double>{};
     for (final entry in filtered) {
-      byCategory.update(entry.category, (value) => value + entry.amount, ifAbsent: () => entry.amount);
+      final categoryKey = entry.isFixedExpense && targetType == EntryType.expense
+          ? '고정비'
+          : entry.category;
+      byCategory.update(categoryKey, (value) => value + entry.amount, ifAbsent: () => entry.amount);
     }
     final items = byCategory.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
     _syncCategoryKeys(items.length);
@@ -643,6 +654,14 @@ class _StatsPageState extends State<StatsPage> {
                   ],
                 ),
                 const SizedBox(height: 14),
+                if (_selectedKind == 1 && fixedExpenseTotal > 0) ...[
+                  _FixedExpenseStatsCard(
+                    fixedAmount: fixedExpenseTotal,
+                    variableAmount: normalExpenseTotal,
+                    totalExpense: expenseTotal,
+                  ),
+                  const SizedBox(height: 14),
+                ],
                 if (items.isEmpty)
                   Container(
                     padding: const EdgeInsets.fromLTRB(18, 24, 18, 24),
@@ -901,6 +920,149 @@ class _StatsDateRangeField extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _FixedExpenseStatsCard extends StatelessWidget {
+  const _FixedExpenseStatsCard({
+    required this.fixedAmount,
+    required this.variableAmount,
+    required this.totalExpense,
+  });
+
+  final double fixedAmount;
+  final double variableAmount;
+  final double totalExpense;
+
+  @override
+  Widget build(BuildContext context) {
+    final ratio = totalExpense <= 0 ? 0.0 : fixedAmount / totalExpense;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE6EAF0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFEEE9),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.event_repeat_rounded,
+                  color: Color(0xFFE76158),
+                  size: 19,
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  '고정비 산출',
+                  style: TextStyle(
+                    color: Color(0xFF14171C),
+                    fontSize: 15,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              Text(
+                '${(ratio * 100).round()}%',
+                style: const TextStyle(
+                  color: Color(0xFFE76158),
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              minHeight: 9,
+              value: ratio.clamp(0.0, 1.0),
+              backgroundColor: const Color(0xFFF1F3F6),
+              valueColor: const AlwaysStoppedAnimation(Color(0xFFE76158)),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: _StatsFixedMetric(
+                  label: '고정비',
+                  value: _formatStatsWon(fixedAmount),
+                  color: const Color(0xFFE76158),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _StatsFixedMetric(
+                  label: '변동 지출',
+                  value: _formatStatsWon(variableAmount.clamp(0, double.infinity)),
+                  color: const Color(0xFF6B7280),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatsFixedMetric extends StatelessWidget {
+  const _StatsFixedMetric({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  final String label;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              color: Color(0xFF8E939D),
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: color,
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2293,6 +2455,33 @@ class EntryEditorPage extends StatefulWidget {
   State<EntryEditorPage> createState() => _EntryEditorPageState();
 }
 
+enum _EntryEditorMode {
+  expense,
+  fixedExpense,
+  income;
+
+  String label(BuildContext context) {
+    switch (this) {
+      case _EntryEditorMode.expense:
+        return '지출';
+      case _EntryEditorMode.fixedExpense:
+        return '고정';
+      case _EntryEditorMode.income:
+        return '수입';
+    }
+  }
+
+  EntryType get entryType {
+    switch (this) {
+      case _EntryEditorMode.income:
+        return EntryType.income;
+      case _EntryEditorMode.expense:
+      case _EntryEditorMode.fixedExpense:
+        return EntryType.expense;
+    }
+  }
+}
+
 class _EntryEditorPageState extends State<EntryEditorPage> {
   late final TextEditingController _titleController;
   late final TextEditingController _amountController;
@@ -2303,6 +2492,8 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
   final Object _categoryAutocompleteGroup = Object();
   List<String> _attachmentPaths = const [];
   late EntryType _type;
+  _EntryEditorMode _mode = _EntryEditorMode.expense;
+  int? _fixedDay;
   DateTime _date = DateTime.now();
   bool _saving = false;
   bool _categoryEditedByUser = false;
@@ -2317,6 +2508,7 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
           _amountController.text.trim().isNotEmpty ||
           _categoryController.text.trim().isNotEmpty ||
           _noteController.text.trim().isNotEmpty ||
+          _mode != _EntryEditorMode.expense ||
           _attachmentPaths.isNotEmpty;
     }
     final sourceTitle = source?.title ?? draft?.title ?? '';
@@ -2327,13 +2519,20 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
     final sourceType = rawSourceType == EntryType.income
         ? EntryType.income
         : EntryType.expense;
+    final sourceMode = source?.isFixedExpense == true
+        ? _EntryEditorMode.fixedExpense
+        : sourceType == EntryType.income
+            ? _EntryEditorMode.income
+            : _EntryEditorMode.expense;
     final sourceDate = source?.date ?? draft?.date;
+    final sourceFixedDay = source?.fixedDay;
     final sourceAttachments = source?.attachmentPaths ?? const <String>[];
     return _titleController.text.trim() != sourceTitle.trim() ||
         _amountController.text.trim() != sourceAmount.trim() ||
         _categoryController.text.trim() != sourceCategory.trim() ||
         _noteController.text.trim() != sourceNote.trim() ||
-        _type != sourceType ||
+        _mode != sourceMode ||
+        _fixedDay != sourceFixedDay ||
         !_isSameMinute(_date, sourceDate) ||
         !_isSamePathList(_attachmentPaths, sourceAttachments);
   }
@@ -2376,6 +2575,10 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
       _type = draft.type == EntryType.income
           ? EntryType.income
           : EntryType.expense;
+      _mode = _type == EntryType.income
+          ? _EntryEditorMode.income
+          : _EntryEditorMode.expense;
+      _fixedDay = null;
       _date = draft.date;
       return;
     }
@@ -2388,6 +2591,12 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
     _type = resolvedType == EntryType.income
         ? EntryType.income
         : EntryType.expense;
+    _fixedDay = existing?.fixedDay;
+    _mode = existing?.isFixedExpense == true
+        ? _EntryEditorMode.fixedExpense
+        : _type == EntryType.income
+            ? _EntryEditorMode.income
+            : _EntryEditorMode.expense;
     _date = existing?.date ?? DateTime.now();
   }
 
@@ -2398,13 +2607,19 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
     _categoryEditedByUser = editedByUser;
   }
 
-  void _handleTypeChanged(EntryType type) {
-    if (_type == type) return;
+  void _handleModeChanged(_EntryEditorMode mode) {
+    if (_mode == mode) return;
     final shouldAutoReplaceCategory = _fromSmsDraft && !_categoryEditedByUser;
     setState(() {
-      _type = type;
+      _mode = mode;
+      _type = mode.entryType;
+      if (mode == _EntryEditorMode.fixedExpense) {
+        _fixedDay ??= _date.day.clamp(1, 31);
+      } else {
+        _fixedDay = null;
+      }
       if (shouldAutoReplaceCategory) {
-        _setCategoryText(type.label(context));
+        _setCategoryText(mode.label(context));
       }
     });
   }
@@ -2479,6 +2694,10 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
   }
 
   Future<void> _pickDateTime() async {
+    if (_mode == _EntryEditorMode.fixedExpense) {
+      await _pickFixedDay();
+      return;
+    }
     final pickedDate = await showDatePicker(
       context: context,
       initialDate: _date,
@@ -2514,6 +2733,68 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
     });
   }
 
+  Future<void> _pickFixedDay() async {
+    final selected = await showDialog<int>(
+      context: context,
+      builder: (context) {
+        final current = _fixedDay ?? _date.day.clamp(1, 31);
+        return AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          title: const Text(
+            '매월 반복일 선택',
+            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
+          ),
+          content: SizedBox(
+            width: 320,
+            child: GridView.builder(
+              shrinkWrap: true,
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 7,
+                mainAxisSpacing: 8,
+                crossAxisSpacing: 8,
+              ),
+              itemCount: 31,
+              itemBuilder: (context, index) {
+                final day = index + 1;
+                final active = day == current;
+                return InkWell(
+                  onTap: () => Navigator.of(context).pop(day),
+                  borderRadius: BorderRadius.circular(999),
+                  child: Container(
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: active ? const Color(0xFFE76158) : const Color(0xFFF5F6F8),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Text(
+                      '$day',
+                      style: TextStyle(
+                        color: active ? Colors.white : const Color(0xFF20242B),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+      },
+    );
+    if (selected == null) return;
+    setState(() {
+      _fixedDay = selected;
+      _date = walletKeeperFixedOccurrenceDate(
+        year: _date.year,
+        month: _date.month,
+        fixedDay: selected,
+        sourceTime: _date,
+      );
+    });
+  }
+
   void _setAmountText(String rawValue) {
     final digits = rawValue.replaceAll(RegExp(r'[^0-9]'), '');
     if (digits.isEmpty) {
@@ -2538,6 +2819,17 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
     }
     setState(() => _saving = true);
     final existing = widget.existing;
+    final fixedDay = _mode == _EntryEditorMode.fixedExpense
+        ? (_fixedDay ?? _date.day.clamp(1, 31))
+        : null;
+    final saveDate = fixedDay == null
+        ? _date
+        : walletKeeperFixedOccurrenceDate(
+            year: _date.year,
+            month: _date.month,
+            fixedDay: fixedDay,
+            sourceTime: _date,
+          );
     final entry = LedgerEntry(
       id: existing?.id ?? widget.smsDraft?.id ?? DateTime.now().microsecondsSinceEpoch.toString(),
       title: _titleController.text.trim(),
@@ -2545,9 +2837,10 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
       category: _categoryController.text.trim(),
       note: _noteController.text.trim(),
       attachmentPaths: List<String>.from(_attachmentPaths),
-      type: _type,
-      date: _date,
+      type: _mode.entryType,
+      date: saveDate,
       createdAt: existing?.createdAt ?? DateTime.now(),
+      fixedDay: fixedDay,
     );
     await widget.onSave(entry);
     if (!mounted) return;
@@ -2623,9 +2916,10 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
     });
   }
 
-  List<EntryType> get _editableTypes => const [
-        EntryType.expense,
-        EntryType.income,
+  List<_EntryEditorMode> get _editableModes => const [
+        _EntryEditorMode.expense,
+        _EntryEditorMode.fixedExpense,
+        _EntryEditorMode.income,
       ];
 
   @override
@@ -2639,7 +2933,7 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
       child: Column(
         children: [
           _CompactPageHeader(
-            title: _type.label(context),
+            title: _mode.label(context),
             onBack: widget.onCancel,
           ),
           Expanded(
@@ -2649,14 +2943,14 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
               padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
               children: [
                 Row(
-                  children: _editableTypes.map((type) {
-                    final selected = _type == type;
-                    final isLast = type == _editableTypes.last;
+                  children: _editableModes.map((mode) {
+                    final selected = _mode == mode;
+                    final isLast = mode == _editableModes.last;
                     return Expanded(
                       child: Padding(
                         padding: EdgeInsets.only(right: isLast ? 0 : 10),
                         child: GestureDetector(
-                          onTap: () => _handleTypeChanged(type),
+                          onTap: () => _handleModeChanged(mode),
                           child: Container(
                             height: 48,
                             decoration: BoxDecoration(
@@ -2673,7 +2967,7 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
                             ),
                             alignment: Alignment.center,
                             child: Text(
-                              type.label(context),
+                              mode.label(context),
                               style: TextStyle(
                                 color: selected
                                     ? Colors.white
@@ -2690,7 +2984,7 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
                 ),
                 const SizedBox(height: 16),
                 _EditorRow(
-                  label: '날짜',
+                  label: _mode == _EntryEditorMode.fixedExpense ? '반복일' : '날짜',
                   child: InkWell(
                     onTap: _pickDateTime,
                     child: Container(
@@ -2703,7 +2997,9 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
                       child: Row(
                         children: [
                           Text(
-                            DateFormat('yy/M/d (E)  a h:mm', 'ko_KR').format(_date),
+                            _mode == _EntryEditorMode.fixedExpense
+                                ? '매월 ${_fixedDay ?? _date.day}일'
+                                : DateFormat('yy/M/d (E)  a h:mm', 'ko_KR').format(_date),
                             style: const TextStyle(
                               color: Color(0xFF20242B),
                               fontSize: 14,
@@ -4231,20 +4527,25 @@ class AssetPage extends StatelessWidget {
     final bottomInset = bottomOverlayHeightOf(context);
     final now = DateTime.now();
     final startOfToday = DateTime(now.year, now.month, now.day);
-    final summary = LedgerSummary.fromEntries(entries);
-    final thisMonthEntries = entries
+    final materializedThisMonthEntries = entries
         .where(
-          (entry) =>
-              entry.date.year == now.year && entry.date.month == now.month,
+          (entry) => entry.isFixedExpense ||
+              (entry.date.year == now.year && entry.date.month == now.month),
+        )
+        .map(
+          (entry) => entry.isFixedExpense
+              ? walletKeeperMaterializeFixedEntryForMonth(entry, now)
+              : entry,
         )
         .toList()
       ..sort((a, b) => b.date.compareTo(a.date));
+    final summary = LedgerSummary.fromEntries(materializedThisMonthEntries);
     final visibleUpcomingExpenses = _buildUpcomingFixedExpenses(
       entries,
       now: now,
       startOfToday: startOfToday,
     ).take(3).toList();
-    final recentFlow = thisMonthEntries.take(3).toList();
+    final recentFlow = materializedThisMonthEntries.take(3).toList();
     final incomeRatio = (summary.monthIncome <= 0 && summary.monthExpense <= 0)
         ? 0.5
         : summary.monthIncome /
@@ -4511,14 +4812,12 @@ List<LedgerEntry> _buildUpcomingFixedExpenses(
     final hasMonthlyPattern = _hasMonthlyRecurringPattern(group);
     if (!explicitFixed && !hasMonthlyPattern) continue;
 
-    final dueDay = group.first.date.day;
-    final lastDayOfMonth = DateTime(now.year, now.month + 1, 0).day;
-    final projectedDate = DateTime(
-      now.year,
-      now.month,
-      math.min(dueDay, lastDayOfMonth),
-      group.first.date.hour,
-      group.first.date.minute,
+    final dueDay = group.first.fixedDay ?? group.first.date.day;
+    final projectedDate = walletKeeperFixedOccurrenceDate(
+      year: now.year,
+      month: now.month,
+      fixedDay: dueDay,
+      sourceTime: group.first.date,
     );
     if (projectedDate.isBefore(startOfToday)) continue;
 
@@ -4537,15 +4836,16 @@ List<LedgerEntry> _buildUpcomingFixedExpenses(
 
     projected.add(
       LedgerEntry(
-        id: 'projected:${sample.id}:$projectedDate',
+        id: sample.id,
         title: sample.title,
         amount: sample.amount,
         category: sample.category,
         note: sample.note,
-        attachmentPaths: const [],
+        attachmentPaths: sample.attachmentPaths,
         type: sample.type,
         date: projectedDate,
         createdAt: sample.createdAt,
+        fixedDay: sample.fixedDay,
       ),
     );
   }
@@ -4558,6 +4858,35 @@ List<LedgerEntry> _buildUpcomingFixedExpenses(
     if (!seen.add(key)) return false;
     return true;
   }).toList();
+}
+
+List<LedgerEntry> _statsEntriesForRange(
+  List<LedgerEntry> entries, {
+  required DateTime start,
+  required DateTime end,
+}) {
+  final result = <LedgerEntry>[];
+  final startMonth = DateTime(start.year, start.month);
+  final endMonth = DateTime(end.year, end.month);
+
+  for (final entry in entries) {
+    if (!entry.isFixedExpense) {
+      if (!entry.date.isBefore(start) && !entry.date.isAfter(end)) {
+        result.add(entry);
+      }
+      continue;
+    }
+
+    var cursor = startMonth;
+    while (!cursor.isAfter(endMonth)) {
+      final materialized = walletKeeperMaterializeFixedEntryForMonth(entry, cursor);
+      if (!materialized.date.isBefore(start) && !materialized.date.isAfter(end)) {
+        result.add(materialized);
+      }
+      cursor = DateTime(cursor.year, cursor.month + 1);
+    }
+  }
+  return result;
 }
 
 String _fixedExpenseSignature(LedgerEntry entry) =>
@@ -4574,6 +4903,7 @@ bool _hasMonthlyRecurringPattern(List<LedgerEntry> group) {
 }
 
 bool _looksLikeFixedExpense(LedgerEntry entry) {
+  if (entry.isFixedExpense) return true;
   final combined = '${entry.title} ${entry.category} ${entry.note}'.toLowerCase();
   const fixedKeywords = [
     '고정',
@@ -4630,7 +4960,11 @@ List<_StatsTrendPoint> _buildRecentTrendPoints(
         );
     }
 
-    final amount = entries
+    final amount = _statsEntriesForRange(
+      entries,
+      start: periodStart,
+      end: periodEndExclusive.subtract(const Duration(microseconds: 1)),
+    )
         .where(
           (entry) =>
               entry.type == type &&
@@ -6379,7 +6713,7 @@ class _UpcomingExpenseAnalysisRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = _assetAccentForCategory(entry.category, entry.type);
+    final accent = _assetAccentForEntry(entry);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -6391,7 +6725,7 @@ class _UpcomingExpenseAnalysisRow extends StatelessWidget {
             borderRadius: BorderRadius.circular(15),
           ),
           child: Icon(
-            _assetIconForCategory(entry.category),
+            entry.isFixedExpense ? Icons.event_repeat_rounded : _assetIconForCategory(entry.category),
             size: 21,
             color: accent,
           ),
@@ -6884,7 +7218,7 @@ class _UpcomingExpenseRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = _assetAccentForCategory(entry.category, entry.type);
+    final accent = _assetAccentForEntry(entry);
     return Row(
       children: [
         Container(
@@ -6895,7 +7229,7 @@ class _UpcomingExpenseRow extends StatelessWidget {
             borderRadius: BorderRadius.circular(14),
           ),
           child: Icon(
-            _assetIconForCategory(entry.category),
+            entry.isFixedExpense ? Icons.event_repeat_rounded : _assetIconForCategory(entry.category),
             size: 19,
             color: accent,
           ),
@@ -6917,7 +7251,9 @@ class _UpcomingExpenseRow extends StatelessWidget {
               ),
               const SizedBox(height: 3),
               Text(
-                '${DateFormat('M.d').format(entry.date)} · ${entry.category}',
+                entry.isFixedExpense
+                    ? '${DateFormat('M.d').format(entry.date)} · 고정비 · 매월 ${entry.fixedDay}일'
+                    : '${DateFormat('M.d').format(entry.date)} · ${entry.category}',
                 style: const TextStyle(
                   color: Color(0xFF8D97A5),
                   fontSize: 11,
@@ -7036,7 +7372,7 @@ class _RecentAssetFlowRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = _calendarEntryAccent(entry);
+    final accent = _assetAccentForEntry(entry);
     final prefix = entry.type == EntryType.expense ? '-' : '+';
     return Row(
       children: [
@@ -7048,7 +7384,7 @@ class _RecentAssetFlowRow extends StatelessWidget {
             shape: BoxShape.circle,
           ),
           child: Icon(
-            _assetIconForCategory(entry.category),
+            entry.isFixedExpense ? Icons.event_repeat_rounded : _assetIconForCategory(entry.category),
             size: 19,
             color: Colors.white,
           ),
@@ -7070,7 +7406,9 @@ class _RecentAssetFlowRow extends StatelessWidget {
               ),
               const SizedBox(height: 3),
               Text(
-                '${DateFormat('M.d HH:mm').format(entry.date)} · ${entry.category}',
+                entry.isFixedExpense
+                    ? '${DateFormat('M.d').format(entry.date)} · 고정비 · 매월 ${entry.fixedDay}일'
+                    : '${DateFormat('M.d HH:mm').format(entry.date)} · ${entry.category}',
                 style: const TextStyle(
                   color: Color(0xFF8D97A5),
                   fontSize: 11,
@@ -7098,6 +7436,11 @@ class _RecentAssetFlowRow extends StatelessWidget {
 
 String _formatAssetAmount(double amount) {
   return formatCurrency(amount).replaceAll('₩', '').replaceAll('원', '').trim();
+}
+
+Color _assetAccentForEntry(LedgerEntry entry) {
+  if (entry.isFixedExpense) return const Color(0xFFE76158);
+  return _assetAccentForCategory(entry.category, entry.type);
 }
 
 Color _assetAccentForCategory(String category, EntryType type) {

@@ -1840,7 +1840,8 @@ class LedgerSummary {
           (value) => value + entry.amount,
           ifAbsent: () => entry.amount,
         );
-        if (entry.category.contains('고정') ||
+        if (entry.isFixedExpense ||
+            entry.category.contains('고정') ||
             entry.category.toLowerCase().contains('fixed')) {
           fixed += entry.amount;
         }
@@ -1868,6 +1869,7 @@ class LedgerEntry {
     required this.type,
     required this.date,
     required this.createdAt,
+    this.fixedDay,
   });
 
   final String id;
@@ -1879,6 +1881,36 @@ class LedgerEntry {
   final EntryType type;
   final DateTime date;
   final DateTime createdAt;
+  final int? fixedDay;
+
+  bool get isFixedExpense => type == EntryType.expense && fixedDay != null;
+
+  LedgerEntry copyWith({
+    String? id,
+    String? title,
+    double? amount,
+    String? category,
+    String? note,
+    List<String>? attachmentPaths,
+    EntryType? type,
+    DateTime? date,
+    DateTime? createdAt,
+    int? fixedDay,
+    bool clearFixedDay = false,
+  }) {
+    return LedgerEntry(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      amount: amount ?? this.amount,
+      category: category ?? this.category,
+      note: note ?? this.note,
+      attachmentPaths: attachmentPaths ?? this.attachmentPaths,
+      type: type ?? this.type,
+      date: date ?? this.date,
+      createdAt: createdAt ?? this.createdAt,
+      fixedDay: clearFixedDay ? null : fixedDay ?? this.fixedDay,
+    );
+  }
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -1890,6 +1922,7 @@ class LedgerEntry {
     'type': type.name,
     'date': date.toIso8601String(),
     'createdAt': createdAt.toIso8601String(),
+    if (fixedDay != null) 'fixedDay': fixedDay,
   };
 
   factory LedgerEntry.fromJson(Map<String, dynamic> json) => LedgerEntry(
@@ -1904,6 +1937,37 @@ class LedgerEntry {
     type: EntryType.values.byName(json['type'] as String),
     date: DateTime.parse(json['date'] as String),
     createdAt: DateTime.parse(json['createdAt'] as String),
+    fixedDay: (json['fixedDay'] as num?)?.toInt(),
+  );
+}
+
+int walletKeeperLastDayOfMonth(int year, int month) =>
+    DateTime(year, month + 1, 0).day;
+
+DateTime walletKeeperFixedOccurrenceDate({
+  required int year,
+  required int month,
+  required int fixedDay,
+  DateTime? sourceTime,
+}) {
+  final day = math.min(fixedDay.clamp(1, 31), walletKeeperLastDayOfMonth(year, month));
+  final time = sourceTime ?? DateTime.now();
+  return DateTime(year, month, day, time.hour, time.minute, time.second, time.millisecond, time.microsecond);
+}
+
+LedgerEntry walletKeeperMaterializeFixedEntryForMonth(
+  LedgerEntry entry,
+  DateTime month,
+) {
+  final fixedDay = entry.fixedDay;
+  if (fixedDay == null) return entry;
+  return entry.copyWith(
+    date: walletKeeperFixedOccurrenceDate(
+      year: month.year,
+      month: month.month,
+      fixedDay: fixedDay,
+      sourceTime: entry.date,
+    ),
   );
 }
 

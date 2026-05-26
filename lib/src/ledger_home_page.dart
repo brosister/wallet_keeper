@@ -482,6 +482,20 @@ class _LedgerHomePageState extends State<LedgerHomePage>
     await showAppToast('내역을 저장했습니다.');
   }
 
+  List<LedgerEntry> _entriesForMonth(DateTime month) {
+    return _entries
+        .where((entry) {
+          if (entry.isFixedExpense) return true;
+          return entry.date.year == month.year && entry.date.month == month.month;
+        })
+        .map(
+          (entry) => entry.isFixedExpense
+              ? walletKeeperMaterializeFixedEntryForMonth(entry, month)
+              : entry,
+        )
+        .toList();
+  }
+
   Future<bool> _deleteEntry(LedgerEntry entry) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -1181,7 +1195,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
 
   @override
   Widget build(BuildContext context) {
-    final summary = LedgerSummary.fromEntries(_entries);
+    final summary = LedgerSummary.fromEntries(_entriesForMonth(DateTime.now()));
     final showBottomBar =
         _currentRoute.kind == _ShellRouteKind.root ||
         _currentRoute.kind == _ShellRouteKind.smsInbox ||
