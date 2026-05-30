@@ -19,14 +19,15 @@ class MmsReceiver : BroadcastReceiver() {
                     }
                 val financialRecent = recent.mapNotNull { item ->
                     val body = item["body"] as? String ?: return@mapNotNull null
-                    val parsed = WalletKeeperNativeFinancialMessageParser.parse(body) ?: return@mapNotNull null
+                    val parsed = WalletKeeperNativeFinancialMessageParser.parse(context, body)
+                        ?: return@mapNotNull null
                     item to parsed
                 }
                 val latest = financialRecent.firstOrNull() ?: return@postDelayed
                 recent.forEach {
                     val body = it["body"] as? String ?: return@forEach
                     if (
-                        WalletKeeperNativeFinancialMessageParser.parse(body) != null &&
+                        WalletKeeperNativeFinancialMessageParser.parse(context, body) != null &&
                         MmsReader.shouldEnqueueRealtimeMms(context, it)
                     ) {
                         MmsReader.storePendingMms(context, it)

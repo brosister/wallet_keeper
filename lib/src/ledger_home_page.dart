@@ -100,6 +100,8 @@ class _LedgerHomePageState extends State<LedgerHomePage>
   final Telephony _telephony = Telephony.instance;
   final WalletKeeperSmsSettingsRepository _smsSettingsRepository =
       WalletKeeperSmsSettingsRepository();
+  final WalletKeeperAppSettingsRepository _appSettingsRepository =
+      WalletKeeperAppSettingsRepository();
   final WalletKeeperNotificationAccessRepository _notificationAccessRepository =
       const WalletKeeperNotificationAccessRepository();
   final WalletKeeperMemoRepository _memoRepository =
@@ -127,6 +129,10 @@ class _LedgerHomePageState extends State<LedgerHomePage>
     showNotification: true,
     shareHeuristicReports: false,
     importWindowDays: 60,
+  );
+  WalletKeeperAppSettings _appSettings = const WalletKeeperAppSettings(
+    language: WalletKeeperAppLanguage.system,
+    currency: WalletKeeperCurrency.krw,
   );
   Timer? _pendingMmsTimer;
   StreamSubscription<String>? _notificationRouteSubscription;
@@ -211,8 +217,10 @@ class _LedgerHomePageState extends State<LedgerHomePage>
     final loadedBudgets = await _budgetRepository.load();
     final loadedDrafts = await _smsAutomationRepository.loadInboxDrafts();
     final loadedSettings = await _smsSettingsRepository.load();
+    final loadedAppSettings = await _appSettingsRepository.load();
     final financialNotificationEnabled = await _notificationAccessRepository
         .isFinancialAppNotificationEnabled();
+    applyWalletKeeperAppSettings(loadedAppSettings);
 
     if (!mounted) return;
     setState(() {
@@ -221,6 +229,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
       _budgets = loadedBudgets;
       _smsDrafts = loadedDrafts;
       _smsSettings = loadedSettings;
+      _appSettings = loadedAppSettings;
       _financialAppNotificationEnabled = financialNotificationEnabled;
     });
 
@@ -486,7 +495,8 @@ class _LedgerHomePageState extends State<LedgerHomePage>
     return _entries
         .where((entry) {
           if (entry.isFixedExpense) return true;
-          return entry.date.year == month.year && entry.date.month == month.month;
+          return entry.date.year == month.year &&
+              entry.date.month == month.month;
         })
         .map(
           (entry) => entry.isFixedExpense
@@ -982,6 +992,13 @@ class _LedgerHomePageState extends State<LedgerHomePage>
     await _syncCloud();
   }
 
+  Future<void> _saveAppSettings(WalletKeeperAppSettings settings) async {
+    await _appSettingsRepository.save(settings);
+    applyWalletKeeperAppSettings(settings);
+    if (!mounted) return;
+    setState(() => _appSettings = settings);
+  }
+
   Future<void> _removeSmsDraft(String id) async {
     await _smsAutomationRepository.removeDraft(id);
     if (!mounted) return;
@@ -1250,9 +1267,14 @@ class _LedgerHomePageState extends State<LedgerHomePage>
           SettingsPage(
             session: _session,
             smsSettings: _smsSettings,
+            appSettings: _appSettings,
             onOpenSmsSettings: () => setState(
               () => _routeStack.add(const _ShellRoute.smsSettings()),
             ),
+            onLanguageChanged: (language) =>
+                _saveAppSettings(_appSettings.copyWith(language: language)),
+            onCurrencyChanged: (currency) =>
+                _saveAppSettings(_appSettings.copyWith(currency: currency)),
             onOpenProfileInfo: () => setState(
               () => _routeStack.add(const _ShellRoute.settingsProfile()),
             ),

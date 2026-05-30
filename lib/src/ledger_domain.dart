@@ -84,6 +84,319 @@ class WalletKeeperSmsSettings {
   }
 }
 
+enum WalletKeeperCurrency { krw, usd, jpy, cny }
+
+enum WalletKeeperAppLanguage { system, ko, en, ja, zhHans }
+
+class WalletKeeperAppSettings {
+  const WalletKeeperAppSettings({
+    required this.language,
+    required this.currency,
+  });
+
+  final WalletKeeperAppLanguage language;
+  final WalletKeeperCurrency currency;
+
+  WalletKeeperAppSettings copyWith({
+    WalletKeeperAppLanguage? language,
+    WalletKeeperCurrency? currency,
+  }) {
+    return WalletKeeperAppSettings(
+      language: language ?? this.language,
+      currency: currency ?? this.currency,
+    );
+  }
+}
+
+class WalletKeeperAppSettingsRepository {
+  Future<WalletKeeperAppSettings> load() async {
+    final prefs = await SharedPreferences.getInstance();
+    final rawLanguage = prefs.getString(_walletKeeperLanguageKey) ?? 'system';
+    final raw = prefs.getString(_walletKeeperCurrencyKey) ?? 'krw';
+    return WalletKeeperAppSettings(
+      language: WalletKeeperAppLanguage.values.firstWhere(
+        (value) => value.name == rawLanguage,
+        orElse: () => WalletKeeperAppLanguage.system,
+      ),
+      currency: WalletKeeperCurrency.values.firstWhere(
+        (value) => value.name == raw,
+        orElse: () => WalletKeeperCurrency.krw,
+      ),
+    );
+  }
+
+  Future<void> save(WalletKeeperAppSettings settings) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_walletKeeperLanguageKey, settings.language.name);
+    await prefs.setString(_walletKeeperCurrencyKey, settings.currency.name);
+  }
+}
+
+WalletKeeperAppSettings _walletKeeperAppSettingsCache =
+    const WalletKeeperAppSettings(
+      language: WalletKeeperAppLanguage.system,
+      currency: WalletKeeperCurrency.krw,
+    );
+final ValueNotifier<WalletKeeperAppSettings> _walletKeeperAppSettingsNotifier =
+    ValueNotifier<WalletKeeperAppSettings>(_walletKeeperAppSettingsCache);
+
+void applyWalletKeeperAppSettings(WalletKeeperAppSettings settings) {
+  _walletKeeperAppSettingsCache = settings;
+  _walletKeeperAppSettingsNotifier.value = settings;
+}
+
+Locale? walletKeeperLocaleOverrideOf(WalletKeeperAppSettings settings) {
+  switch (settings.language) {
+    case WalletKeeperAppLanguage.system:
+      return null;
+    case WalletKeeperAppLanguage.ko:
+      return const Locale('ko');
+    case WalletKeeperAppLanguage.en:
+      return const Locale('en');
+    case WalletKeeperAppLanguage.ja:
+      return const Locale('ja');
+    case WalletKeeperAppLanguage.zhHans:
+      return const Locale('zh', 'Hans');
+  }
+}
+
+String walletKeeperLanguageLabel(WalletKeeperAppLanguage language) {
+  switch (language) {
+    case WalletKeeperAppLanguage.system:
+      return '기기 언어와 동일';
+    case WalletKeeperAppLanguage.ko:
+      return '한국어';
+    case WalletKeeperAppLanguage.en:
+      return 'English';
+    case WalletKeeperAppLanguage.ja:
+      return '日本語';
+    case WalletKeeperAppLanguage.zhHans:
+      return '简体中文';
+  }
+}
+
+String walletKeeperLanguageDescription(WalletKeeperAppLanguage language) {
+  switch (language) {
+    case WalletKeeperAppLanguage.system:
+      return '기기 설정 언어를 따라갑니다';
+    case WalletKeeperAppLanguage.ko:
+      return 'Korean';
+    case WalletKeeperAppLanguage.en:
+      return 'English';
+    case WalletKeeperAppLanguage.ja:
+      return 'Japanese';
+    case WalletKeeperAppLanguage.zhHans:
+      return 'Chinese (Simplified)';
+  }
+}
+
+enum WalletKeeperTextKey {
+  ledgerTab,
+  statsTab,
+  assetTab,
+  settingsTab,
+  settingsTitle,
+  settingsSection,
+  languageSetting,
+  currencySetting,
+  smsSetting,
+  inquiry,
+  terms,
+  saving,
+  languageDialogTitle,
+  languageDialogDescription,
+  currencyDialogTitle,
+  currencyDialogDescription,
+  followSystem,
+  smsOn,
+  smsOff,
+}
+
+String walletKeeperText(BuildContext context, WalletKeeperTextKey key) {
+  final locale = Localizations.localeOf(context);
+  final code = locale.languageCode.toLowerCase();
+  final isZh = code == 'zh';
+  final isJa = code == 'ja';
+  final isKo = code == 'ko';
+
+  switch (key) {
+    case WalletKeeperTextKey.ledgerTab:
+      if (isKo) return '가계부';
+      if (isJa) return '家計簿';
+      if (isZh) return '账本';
+      return 'Ledger';
+    case WalletKeeperTextKey.statsTab:
+      if (isKo) return '통계';
+      if (isJa) return '統計';
+      if (isZh) return '统计';
+      return 'Stats';
+    case WalletKeeperTextKey.assetTab:
+      if (isKo) return '자산';
+      if (isJa) return '資産';
+      if (isZh) return '资产';
+      return 'Assets';
+    case WalletKeeperTextKey.settingsTab:
+      if (isKo) return '설정';
+      if (isJa) return '設定';
+      if (isZh) return '设置';
+      return 'Settings';
+    case WalletKeeperTextKey.settingsTitle:
+      if (isKo) return '설정';
+      if (isJa) return '設定';
+      if (isZh) return '设置';
+      return 'Settings';
+    case WalletKeeperTextKey.settingsSection:
+      if (isKo) return '설정';
+      if (isJa) return '設定';
+      if (isZh) return '设置';
+      return 'Settings';
+    case WalletKeeperTextKey.languageSetting:
+      if (isKo) return '언어';
+      if (isJa) return '言語';
+      if (isZh) return '语言';
+      return 'Language';
+    case WalletKeeperTextKey.currencySetting:
+      if (isKo) return '화폐 단위';
+      if (isJa) return '通貨単位';
+      if (isZh) return '货币单位';
+      return 'Currency';
+    case WalletKeeperTextKey.smsSetting:
+      if (isKo) return '문자 설정';
+      if (isJa) return 'SMS設定';
+      if (isZh) return '短信设置';
+      return 'SMS Settings';
+    case WalletKeeperTextKey.inquiry:
+      if (isKo) return '문의';
+      if (isJa) return 'お問い合わせ';
+      if (isZh) return '咨询';
+      return 'Support';
+    case WalletKeeperTextKey.terms:
+      if (isKo) return '이용약관';
+      if (isJa) return '利用規約';
+      if (isZh) return '使用条款';
+      return 'Terms';
+    case WalletKeeperTextKey.saving:
+      if (isKo) return '저장 중...';
+      if (isJa) return '保存中...';
+      if (isZh) return '保存中...';
+      return 'Saving...';
+    case WalletKeeperTextKey.languageDialogTitle:
+      if (isKo) return '언어';
+      if (isJa) return '言語';
+      if (isZh) return '语言';
+      return 'Language';
+    case WalletKeeperTextKey.languageDialogDescription:
+      if (isKo) return '앱에 표시할 언어를 선택하세요.';
+      if (isJa) return 'アプリに表示する言語を選択してください。';
+      if (isZh) return '请选择应用显示语言。';
+      return 'Choose the language used in the app.';
+    case WalletKeeperTextKey.currencyDialogTitle:
+      if (isKo) return '화폐 단위';
+      if (isJa) return '通貨単位';
+      if (isZh) return '货币单位';
+      return 'Currency';
+    case WalletKeeperTextKey.currencyDialogDescription:
+      if (isKo) return '앱 전체 금액 표시에 사용할 통화를 선택하세요.';
+      if (isJa) return 'アプリ全体の金額表示に使う通貨を選択してください。';
+      if (isZh) return '请选择应用内金额显示使用的货币。';
+      return 'Choose the currency used for amounts across the app.';
+    case WalletKeeperTextKey.followSystem:
+      if (isKo) return '기기 언어와 동일';
+      if (isJa) return 'デバイスの言語に合わせる';
+      if (isZh) return '与设备语言相同';
+      return 'Same as device language';
+    case WalletKeeperTextKey.smsOn:
+      if (isKo) return '문자 감지 사용 중';
+      if (isJa) return 'SMS検知を使用中';
+      if (isZh) return '短信检测已开启';
+      return 'SMS detection on';
+    case WalletKeeperTextKey.smsOff:
+      if (isKo) return '문자 감지 꺼짐';
+      if (isJa) return 'SMS検知オフ';
+      if (isZh) return '短信检测已关闭';
+      return 'SMS detection off';
+  }
+}
+
+String walletKeeperCurrencyLabel(WalletKeeperCurrency currency) {
+  switch (currency) {
+    case WalletKeeperCurrency.krw:
+      return 'KRW (원)';
+    case WalletKeeperCurrency.usd:
+      return 'USD (\$)';
+    case WalletKeeperCurrency.jpy:
+      return 'JPY (엔)';
+    case WalletKeeperCurrency.cny:
+      return 'CNY (위안)';
+  }
+}
+
+String walletKeeperCurrencyDescription(WalletKeeperCurrency currency) {
+  switch (currency) {
+    case WalletKeeperCurrency.krw:
+      return '대한민국 원';
+    case WalletKeeperCurrency.usd:
+      return '미국 달러';
+    case WalletKeeperCurrency.jpy:
+      return '일본 엔';
+    case WalletKeeperCurrency.cny:
+      return '중국 위안';
+  }
+}
+
+({String locale, String symbol}) _walletKeeperCurrencyFormatSpec(
+  WalletKeeperCurrency currency,
+) {
+  switch (currency) {
+    case WalletKeeperCurrency.krw:
+      return (locale: 'ko_KR', symbol: '₩');
+    case WalletKeeperCurrency.usd:
+      return (locale: 'en_US', symbol: '\$');
+    case WalletKeeperCurrency.jpy:
+      return (locale: 'ja_JP', symbol: '¥');
+    case WalletKeeperCurrency.cny:
+      return (locale: 'zh_CN', symbol: 'CN¥');
+  }
+}
+
+String walletKeeperCurrencyRegexPattern([WalletKeeperCurrency? currency]) {
+  switch (currency ?? _walletKeeperAppSettingsCache.currency) {
+    case WalletKeeperCurrency.krw:
+      return r'(?:원|KRW|₩)';
+    case WalletKeeperCurrency.usd:
+      return r'(?:USD|US\$|\$|달러)';
+    case WalletKeeperCurrency.jpy:
+      return r'(?:JPY|¥|엔)';
+    case WalletKeeperCurrency.cny:
+      return r'(?:CNY|CN¥|¥|위안|元|人民币)';
+  }
+}
+
+String walletKeeperAmountWithCurrencyRegex([WalletKeeperCurrency? currency]) {
+  final unit = walletKeeperCurrencyRegexPattern(currency);
+  return '(?:$unit\\s*[0-9][0-9,]*|[0-9][0-9,]*\\s*$unit)';
+}
+
+String formatCurrencyValue(double amount) {
+  final spec = _walletKeeperCurrencyFormatSpec(
+    _walletKeeperAppSettingsCache.currency,
+  );
+  return NumberFormat.decimalPattern(spec.locale).format(amount.round());
+}
+
+String formatSignedCurrency(double amount, {bool alwaysShowSign = false}) {
+  final sign = amount < 0 ? '-' : (alwaysShowSign ? '+' : '');
+  return '$sign${formatCurrency(amount.abs())}';
+}
+
+String formatSignedCompactCurrency(
+  double amount, {
+  bool alwaysShowSign = false,
+}) {
+  final sign = amount < 0 ? '-' : (alwaysShowSign ? '+' : '');
+  return '$sign${formatCompactCurrency(amount.abs())}';
+}
+
 class WalletKeeperSmsSettingsRepository {
   Future<WalletKeeperSmsSettings> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -1239,14 +1552,15 @@ class WalletKeeperSmsParser {
     final normalized = body.replaceAll('\r', '');
     final directAmount = _extractAmountByKeywordPattern(normalized, type);
     if (directAmount != null) return directAmount;
+    final currencyPattern = walletKeeperCurrencyRegexPattern();
     final matches = RegExp(
-      r'([0-9][0-9,]*)\s*원',
+      '(?:$currencyPattern\\s*([0-9][0-9,]*)|([0-9][0-9,]*)\\s*$currencyPattern)',
     ).allMatches(normalized).toList();
     if (matches.isEmpty) return null;
 
     final scored = <({int amount, int score, int index})>[];
     for (final match in matches) {
-      final raw = match.group(1);
+      final raw = match.group(1) ?? match.group(2);
       final amount = int.tryParse(raw?.replaceAll(',', '') ?? '');
       if (amount == null || amount <= 0) continue;
       final start = match.start;
@@ -1278,31 +1592,32 @@ class WalletKeeperSmsParser {
   }
 
   static int? _extractAmountByKeywordPattern(String body, EntryType type) {
+    final currencyPattern = walletKeeperCurrencyRegexPattern();
     final patterns = switch (type) {
-      EntryType.expense => const [
-        r'카드대금\s*([0-9][0-9,]*)\s*원',
-        r'청구금액\s*([0-9][0-9,]*)\s*원',
-        r'결제예정금액\s*([0-9][0-9,]*)\s*원',
-        r'자동이체\s*([0-9][0-9,]*)\s*원',
-        r'출금\s*([0-9][0-9,]*)\s*원',
-        r'([0-9][0-9,]*)\s*원\s*(?:출금|승인|결제|사용|자동이체|납부|인출|카드대금)',
+      EntryType.expense => [
+        '카드대금\\s*(?:$currencyPattern\\s*)?([0-9][0-9,]*)\\s*(?:$currencyPattern)?',
+        '청구금액\\s*(?:$currencyPattern\\s*)?([0-9][0-9,]*)\\s*(?:$currencyPattern)?',
+        '결제예정금액\\s*(?:$currencyPattern\\s*)?([0-9][0-9,]*)\\s*(?:$currencyPattern)?',
+        '자동이체\\s*(?:$currencyPattern\\s*)?([0-9][0-9,]*)\\s*(?:$currencyPattern)?',
+        '출금\\s*(?:$currencyPattern\\s*)?([0-9][0-9,]*)\\s*(?:$currencyPattern)?',
+        '($currencyPattern\\s*[0-9][0-9,]*|[0-9][0-9,]*\\s*$currencyPattern)\\s*(?:출금|승인|결제|사용|자동이체|납부|인출|카드대금)',
       ],
-      EntryType.income => const [
-        r'입금\s*([0-9][0-9,]*)\s*원',
-        r'카드취소\s*([0-9][0-9,]*)\s*원',
-        r'결제취소\s*([0-9][0-9,]*)\s*원',
-        r'([0-9][0-9,]*)\s*원\s*(?:입금|환급|환불|급여|적립|캐시백|카드취소|결제취소|취소)',
+      EntryType.income => [
+        '입금\\s*(?:$currencyPattern\\s*)?([0-9][0-9,]*)\\s*(?:$currencyPattern)?',
+        '카드취소\\s*(?:$currencyPattern\\s*)?([0-9][0-9,]*)\\s*(?:$currencyPattern)?',
+        '결제취소\\s*(?:$currencyPattern\\s*)?([0-9][0-9,]*)\\s*(?:$currencyPattern)?',
+        '($currencyPattern\\s*[0-9][0-9,]*|[0-9][0-9,]*\\s*$currencyPattern)\\s*(?:입금|환급|환불|급여|적립|캐시백|카드취소|결제취소|취소)',
       ],
-      EntryType.transfer => const [
-        r'이체\s*([0-9][0-9,]*)\s*원',
-        r'([0-9][0-9,]*)\s*원\s*(?:이체|송금|계좌이동)',
+      EntryType.transfer => [
+        '이체\\s*(?:$currencyPattern\\s*)?([0-9][0-9,]*)\\s*(?:$currencyPattern)?',
+        '($currencyPattern\\s*[0-9][0-9,]*|[0-9][0-9,]*\\s*$currencyPattern)\\s*(?:이체|송금|계좌이동)',
       ],
     };
     for (final pattern in patterns) {
       final match = RegExp(pattern).firstMatch(body);
       if (match == null) continue;
-      final raw = match.group(1);
-      final amount = int.tryParse(raw?.replaceAll(',', '') ?? '');
+      final raw = (match.group(1) ?? '').replaceAll(RegExp('[^0-9,]'), '');
+      final amount = int.tryParse(raw.replaceAll(',', ''));
       if (amount != null && amount > 0) {
         return amount;
       }
@@ -1425,6 +1740,8 @@ class WalletKeeperSmsParser {
     String sourceType = 'sms',
     String titleHint = '',
   }) {
+    final currencyPattern = walletKeeperCurrencyRegexPattern();
+    final amountWithCurrencyPattern = walletKeeperAmountWithCurrencyRegex();
     if (eventType == '카드대금') {
       return '카드대금';
     }
@@ -1453,7 +1770,7 @@ class WalletKeeperSmsParser {
     }
 
     final merchantAfterAmount = RegExp(
-      r'(?:승인|결제|사용)\s*(?:[0-9][0-9,]{2,}\s*원)?\s*([가-힣A-Za-z0-9&().\- ]{2,32})$',
+      '(?:승인|결제|사용)\\s*(?:$amountWithCurrencyPattern)?\\s*([가-힣A-Za-z0-9&().\\- ]{2,32})\$',
     ).firstMatch(body);
     final merchantCandidate = _cleanTargetCandidate(
       merchantAfterAmount?.group(1) ?? '',
@@ -1463,7 +1780,7 @@ class WalletKeeperSmsParser {
     }
 
     final cardApprovalPattern = RegExp(
-      r'\]\s*(?:\d{2}/\d{2}\s+\d{1,2}:\d{2}\s+)?(.+?)\s+[0-9][0-9,]{2,}\s*원\s*(?:승인|결제|사용)',
+      '\\]\\s*(?:\\d{2}/\\d{2}\\s+\\d{1,2}:\\d{2}\\s+)?(.+?)\\s+$amountWithCurrencyPattern\\s*(?:승인|결제|사용)',
     ).firstMatch(body);
     final cardApprovalTarget = _cleanTargetCandidate(
       cardApprovalPattern?.group(1) ?? '',
@@ -1473,7 +1790,7 @@ class WalletKeeperSmsParser {
     }
 
     final depositorPattern = RegExp(
-      r'(?:\]\s*)?(?:[가-힣A-Za-z0-9*]+\s+)?(?:\d{2}/\d{2}\s+\d{1,2}:\d{2}\s+)?([가-힣A-Za-z0-9 ]{2,20}?)(?:님)?\s+[0-9][0-9,]{2,}\s*원?\s*입금',
+      '(?:\\]\\s*)?(?:[가-힣A-Za-z0-9*]+\\s+)?(?:\\d{2}/\\d{2}\\s+\\d{1,2}:\\d{2}\\s+)?([가-힣A-Za-z0-9 ]{2,20}?)(?:님)?\\s+(?:$amountWithCurrencyPattern|[0-9][0-9,]{2,})\\s*입금',
     ).firstMatch(body);
     final depositor = _cleanTargetCandidate(depositorPattern?.group(1) ?? '');
     if (depositor.isNotEmpty) {
@@ -1482,7 +1799,7 @@ class WalletKeeperSmsParser {
 
     if (eventType == '입금' || eventType == '환불') {
       final trailingIncome = RegExp(
-        r'(?:입금|환불|카드취소|결제취소)\s*[0-9][0-9,]{2,}\s*원?(?:\s*\([^)]*\))?\s*(.+)$',
+        '(?:입금|환불|카드취소|결제취소)\\s*(?:$amountWithCurrencyPattern|[0-9][0-9,]{2,})(?:\\s*\\([^)]*\\))?\\s*(.+)\$',
       ).firstMatch(combined);
       final trailingIncomeTarget = _cleanTargetCandidate(
         trailingIncome?.group(1) ?? '',
@@ -1494,7 +1811,7 @@ class WalletKeeperSmsParser {
 
     if (eventType == '자동이체' || eventType == '납부') {
       final trailing = RegExp(
-        r'(?:자동이체|납부|출금)\s*[0-9][0-9,]{2,}\s*원?(?:\s*(?:출금|납부))?\s*(.+)$',
+        '(?:자동이체|납부|출금)\\s*(?:$amountWithCurrencyPattern|[0-9][0-9,]{2,})(?:\\s*(?:출금|납부))?\\s*(.+)\$',
       ).firstMatch(combined);
       final trailingTarget = _cleanTargetCandidate(trailing?.group(1) ?? '');
       if (trailingTarget.isNotEmpty) {
@@ -1504,7 +1821,7 @@ class WalletKeeperSmsParser {
 
     if (eventType == '출금') {
       final trailingExpense = RegExp(
-        r'(?:출금|오픈뱅킹출금)\s*[0-9][0-9,]{2,}\s*원?(?:\s*잔액[0-9,]+)?\s*(.+)$',
+        '(?:출금|오픈뱅킹출금)\\s*(?:$amountWithCurrencyPattern|[0-9][0-9,]{2,})(?:\\s*잔액(?:$currencyPattern\\s*)?[0-9,]+)?\\s*(.+)\$',
       ).firstMatch(combined);
       final trailingExpenseTarget = _cleanTargetCandidate(
         trailingExpense?.group(1) ?? '',
@@ -1712,6 +2029,7 @@ class WalletKeeperSmsParser {
   }
 
   static String _cleanTargetCandidate(String value) {
+    final amountWithCurrencyPattern = walletKeeperAmountWithCurrencyRegex();
     final cleaned = value
         .replaceAll(RegExp(r'^\[.*?\]\s*'), '')
         .replaceAll(RegExp(r'https?://\S+'), '')
@@ -1722,7 +2040,7 @@ class WalletKeeperSmsParser {
         .replaceAll(RegExp(r'\b\d{1,2}\b(?=\s+\d{2,}-\*{2,}-\*{2,}\d+)'), '')
         .replaceAll(RegExp(r'\b\d{2,}-\*{2,}-\*{2,}\d+\b'), '')
         .replaceAll(RegExp(r'\b잔액\s*[0-9,]+\b'), '')
-        .replaceAll(RegExp(r'\b[0-9][0-9,]{2,}\s*원\b'), '')
+        .replaceAll(RegExp('\\b$amountWithCurrencyPattern\\b'), '')
         .replaceAll(
           RegExp(r'\b(승인|결제|사용|출금|입금|자동이체|오픈뱅킹출금|납부|잔액|환불|카드대금|청구금액)\b'),
           '',
@@ -1950,9 +2268,21 @@ DateTime walletKeeperFixedOccurrenceDate({
   required int fixedDay,
   DateTime? sourceTime,
 }) {
-  final day = math.min(fixedDay.clamp(1, 31), walletKeeperLastDayOfMonth(year, month));
+  final day = math.min(
+    fixedDay.clamp(1, 31),
+    walletKeeperLastDayOfMonth(year, month),
+  );
   final time = sourceTime ?? DateTime.now();
-  return DateTime(year, month, day, time.hour, time.minute, time.second, time.millisecond, time.microsecond);
+  return DateTime(
+    year,
+    month,
+    day,
+    time.hour,
+    time.minute,
+    time.second,
+    time.millisecond,
+    time.microsecond,
+  );
 }
 
 LedgerEntry walletKeeperMaterializeFixedEntryForMonth(
@@ -3006,9 +3336,12 @@ class WalletKeeperCloudSyncRepository {
 }
 
 String formatCurrency(double amount) {
+  final spec = _walletKeeperCurrencyFormatSpec(
+    _walletKeeperAppSettingsCache.currency,
+  );
   final formatter = NumberFormat.currency(
-    locale: 'ko_KR',
-    symbol: '₩',
+    locale: spec.locale,
+    symbol: spec.symbol,
     decimalDigits: 0,
   );
   return formatter.format(amount);
@@ -3017,9 +3350,13 @@ String formatCurrency(double amount) {
 String formatCompactCurrency(double amount) {
   final value = amount.abs();
   if (value >= 1000) {
+    final spec = _walletKeeperCurrencyFormatSpec(
+      _walletKeeperAppSettingsCache.currency,
+    );
     final compact = value / 1000;
     final digits = compact >= 100 ? 0 : 1;
-    return '₩${compact.toStringAsFixed(digits).replaceAll('.0', '')}k';
+    final sign = amount < 0 ? '-' : '';
+    return '$sign${spec.symbol}${compact.toStringAsFixed(digits).replaceAll('.0', '')}k';
   }
   return formatCurrency(amount);
 }

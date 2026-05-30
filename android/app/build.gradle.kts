@@ -1,6 +1,4 @@
 import java.util.Properties
-import org.gradle.api.GradleException
-
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -57,8 +55,6 @@ android {
         release {
             if (hasReleaseSigning) {
                 signingConfig = signingConfigs.getByName("release")
-            } else {
-                throw GradleException("Release signing is required. Create root/key.properties before building release artifacts.")
             }
         }
     }

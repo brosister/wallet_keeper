@@ -172,10 +172,7 @@ class PlaceholderTabPage extends StatelessWidget {
 }
 
 class StatsPage extends StatefulWidget {
-  const StatsPage({
-    super.key,
-    required this.entries,
-  });
+  const StatsPage({super.key, required this.entries});
 
   final List<LedgerEntry> entries;
 
@@ -256,7 +253,11 @@ class _StatsPageState extends State<StatsPage> {
       case _StatsRangeMode.yearly:
         return DateTime(_selectedYear, 1, 1);
       case _StatsRangeMode.custom:
-        return DateTime(_customStart.year, _customStart.month, _customStart.day);
+        return DateTime(
+          _customStart.year,
+          _customStart.month,
+          _customStart.day,
+        );
     }
   }
 
@@ -272,11 +273,25 @@ class _StatsPageState extends State<StatsPage> {
           59,
         );
       case _StatsRangeMode.monthly:
-        return DateTime(_selectedMonth.year, _selectedMonth.month + 1, 0, 23, 59, 59);
+        return DateTime(
+          _selectedMonth.year,
+          _selectedMonth.month + 1,
+          0,
+          23,
+          59,
+          59,
+        );
       case _StatsRangeMode.yearly:
         return DateTime(_selectedYear, 12, 31, 23, 59, 59);
       case _StatsRangeMode.custom:
-        return DateTime(_customEnd.year, _customEnd.month, _customEnd.day, 23, 59, 59);
+        return DateTime(
+          _customEnd.year,
+          _customEnd.month,
+          _customEnd.day,
+          23,
+          59,
+          59,
+        );
     }
   }
 
@@ -315,7 +330,9 @@ class _StatsPageState extends State<StatsPage> {
         return _startOfWeek(now).isAfter(_selectedWeekAnchor);
       case _StatsRangeMode.monthly:
         final currentMonth = DateTime(now.year, now.month);
-        return currentMonth.isAfter(DateTime(_selectedMonth.year, _selectedMonth.month));
+        return currentMonth.isAfter(
+          DateTime(_selectedMonth.year, _selectedMonth.month),
+        );
       case _StatsRangeMode.yearly:
         return _selectedYear < now.year;
       case _StatsRangeMode.custom:
@@ -337,9 +354,7 @@ class _StatsPageState extends State<StatsPage> {
               primary: Color(0xFFFF6A5F),
               surface: Colors.white,
             ),
-            dialogTheme: const DialogThemeData(
-              backgroundColor: Colors.white,
-            ),
+            dialogTheme: const DialogThemeData(backgroundColor: Colors.white),
           ),
           child: child ?? const SizedBox.shrink(),
         );
@@ -417,17 +432,18 @@ class _StatsPageState extends State<StatsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final periodEntries = _statsEntriesForRange(
-      widget.entries,
-      start: _periodStart,
-      end: _periodEnd,
-    )
-        .where(
-          (entry) =>
-              !entry.date.isBefore(_periodStart) &&
-              !entry.date.isAfter(_periodEnd),
-        )
-        .toList();
+    final periodEntries =
+        _statsEntriesForRange(
+              widget.entries,
+              start: _periodStart,
+              end: _periodEnd,
+            )
+            .where(
+              (entry) =>
+                  !entry.date.isBefore(_periodStart) &&
+                  !entry.date.isAfter(_periodEnd),
+            )
+            .toList();
     final incomeTotal = periodEntries
         .where((entry) => entry.type == EntryType.income)
         .fold<double>(0, (sum, entry) => sum + entry.amount);
@@ -438,27 +454,42 @@ class _StatsPageState extends State<StatsPage> {
         .where((entry) => entry.isFixedExpense)
         .fold<double>(0, (sum, entry) => sum + entry.amount);
     final normalExpenseTotal = expenseTotal - fixedExpenseTotal;
-    final targetType = _selectedKind == 0 ? EntryType.income : EntryType.expense;
-    final filtered = periodEntries.where((entry) => entry.type == targetType).toList();
+    final targetType = _selectedKind == 0
+        ? EntryType.income
+        : EntryType.expense;
+    final filtered = periodEntries
+        .where((entry) => entry.type == targetType)
+        .toList();
     final total = filtered.fold<double>(0, (sum, entry) => sum + entry.amount);
     final byCategory = <String, double>{};
     for (final entry in filtered) {
-      final categoryKey = entry.isFixedExpense && targetType == EntryType.expense
+      final categoryKey =
+          entry.isFixedExpense && targetType == EntryType.expense
           ? '고정비'
           : entry.category;
-      byCategory.update(categoryKey, (value) => value + entry.amount, ifAbsent: () => entry.amount);
+      byCategory.update(
+        categoryKey,
+        (value) => value + entry.amount,
+        ifAbsent: () => entry.amount,
+      );
     }
-    final items = byCategory.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+    final items = byCategory.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
     _syncCategoryKeys(items.length);
     final selectedIndex = items.isEmpty
         ? -1
         : (_selectedCategoryIndex ?? 0).clamp(0, items.length - 1);
     final selectedItem = items.isEmpty ? null : items[selectedIndex];
-    final selectedRatio = selectedItem == null || total == 0 ? 0.0 : selectedItem.value / total;
+    final selectedRatio = selectedItem == null || total == 0
+        ? 0.0
+        : selectedItem.value / total;
     final bottomInset = bottomOverlayHeightOf(context);
-    final selectedColor = _selectedKind == 0 ? const Color(0xFF6C9CFF) : const Color(0xFFFF6A5F);
-    final statsPalette =
-        _selectedKind == 0 ? _statsIncomePalette : _statsExpensePalette;
+    final selectedColor = _selectedKind == 0
+        ? const Color(0xFF6C9CFF)
+        : const Color(0xFFFF6A5F);
+    final statsPalette = _selectedKind == 0
+        ? _statsIncomePalette
+        : _statsExpensePalette;
     final trendPoints = _rangeMode == _StatsRangeMode.custom
         ? const <_StatsTrendPoint>[]
         : _buildRecentTrendPoints(
@@ -467,9 +498,12 @@ class _StatsPageState extends State<StatsPage> {
             mode: _rangeMode,
             anchorStart: _periodStart,
           );
-    final currentPeriodAmount = trendPoints.isEmpty ? 0.0 : trendPoints.last.amount;
-    final previousPeriodAmount =
-        trendPoints.length < 2 ? 0.0 : trendPoints[trendPoints.length - 2].amount;
+    final currentPeriodAmount = trendPoints.isEmpty
+        ? 0.0
+        : trendPoints.last.amount;
+    final previousPeriodAmount = trendPoints.length < 2
+        ? 0.0
+        : trendPoints[trendPoints.length - 2].amount;
     final periodDelta = currentPeriodAmount - previousPeriodAmount;
 
     return Container(
@@ -497,8 +531,11 @@ class _StatsPageState extends State<StatsPage> {
                                     children: [
                                       const SizedBox(width: 20),
                                       _StatsDateRangeField(
-                                        value: DateFormat('yy.MM.dd').format(_customStart),
-                                        onTap: () => _pickCustomDate(isStart: true),
+                                        value: DateFormat(
+                                          'yy.MM.dd',
+                                        ).format(_customStart),
+                                        onTap: () =>
+                                            _pickCustomDate(isStart: true),
                                       ),
                                       const SizedBox(width: 4),
                                       const Center(
@@ -513,8 +550,11 @@ class _StatsPageState extends State<StatsPage> {
                                       ),
                                       const SizedBox(width: 4),
                                       _StatsDateRangeField(
-                                        value: DateFormat('yy.MM.dd').format(_customEnd),
-                                        onTap: () => _pickCustomDate(isStart: false),
+                                        value: DateFormat(
+                                          'yy.MM.dd',
+                                        ).format(_customEnd),
+                                        onTap: () =>
+                                            _pickCustomDate(isStart: false),
                                       ),
                                     ],
                                   ),
@@ -547,7 +587,9 @@ class _StatsPageState extends State<StatsPage> {
                                   ),
                                   const SizedBox(width: 2),
                                   GestureDetector(
-                                    onTap: _canMoveForward ? () => _movePeriod(1) : null,
+                                    onTap: _canMoveForward
+                                        ? () => _movePeriod(1)
+                                        : null,
                                     child: Icon(
                                       Icons.chevron_right_rounded,
                                       size: 30,
@@ -634,145 +676,152 @@ class _StatsPageState extends State<StatsPage> {
               child: ListView(
                 padding: EdgeInsets.fromLTRB(16, 8, 16, bottomInset + 18),
                 children: [
-                Row(
-                  children: [
-                    _StatsSummaryCard(
-                      label: '수입',
-                      value: _formatStatsWon(incomeTotal),
-                      selected: _selectedKind == 0,
-                      onTap: () => _selectKind(0),
-                      color: const Color(0xFF6C9CFF),
-                    ),
-                    const SizedBox(width: 8),
-                    _StatsSummaryCard(
-                      label: '지출',
-                      value: _formatStatsWon(expenseTotal),
-                      selected: _selectedKind == 1,
-                      onTap: () => _selectKind(1),
-                      color: const Color(0xFFFF6A5F),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                if (_selectedKind == 1 && fixedExpenseTotal > 0) ...[
-                  _FixedExpenseStatsCard(
-                    fixedAmount: fixedExpenseTotal,
-                    variableAmount: normalExpenseTotal,
-                    totalExpense: expenseTotal,
+                  Row(
+                    children: [
+                      _StatsSummaryCard(
+                        label: '수입',
+                        value: _formatStatsWon(incomeTotal),
+                        selected: _selectedKind == 0,
+                        onTap: () => _selectKind(0),
+                        color: const Color(0xFF6C9CFF),
+                      ),
+                      const SizedBox(width: 8),
+                      _StatsSummaryCard(
+                        label: '지출',
+                        value: _formatStatsWon(expenseTotal),
+                        selected: _selectedKind == 1,
+                        onTap: () => _selectKind(1),
+                        color: const Color(0xFFFF6A5F),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 14),
-                ],
-                if (items.isEmpty)
-                  Container(
-                    padding: const EdgeInsets.fromLTRB(18, 24, 18, 24),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: const Color(0xFFE6EAF0)),
+                  if (_selectedKind == 1 && fixedExpenseTotal > 0) ...[
+                    _FixedExpenseStatsCard(
+                      fixedAmount: fixedExpenseTotal,
+                      variableAmount: normalExpenseTotal,
+                      totalExpense: expenseTotal,
                     ),
-                    child: const Center(
-                      child: Text(
-                        '표시할 통계가 없습니다.',
-                        style: TextStyle(
-                          color: Color(0xFF8E939D),
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
+                    const SizedBox(height: 14),
+                  ],
+                  if (items.isEmpty)
+                    Container(
+                      padding: const EdgeInsets.fromLTRB(18, 24, 18, 24),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(color: const Color(0xFFE6EAF0)),
                       ),
-                    ),
-                  )
-                else
-                  Container(
-                    padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: const Color(0xFFE6EAF0)),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Color(0x0A14171C),
-                          blurRadius: 18,
-                          offset: Offset(0, 8),
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Text(
-                              targetType == EntryType.income ? '수입 분석' : '지출 분석',
-                              style: const TextStyle(
-                                color: Color(0xFF14171C),
-                                fontSize: 15,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            const Spacer(),
-                            Text(
-                              _periodCardLabel,
-                              style: const TextStyle(
-                                color: Color(0xFF8E939D),
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 18),
-                        Center(
-                          child: _StatsDonutSection(
-                            items: items,
-                            total: total,
-                            selectedIndex: selectedIndex,
-                            selectedItem: selectedItem!,
-                            selectedRatio: selectedRatio,
-                            accentColor: selectedColor,
-                            colors: statsPalette,
-                            onBackgroundTap: _clearSelectedCategory,
-                            animationKey:
-                                '${_rangeMode.name}-${_periodStart.toIso8601String()}-${_periodEnd.toIso8601String()}-$_selectedKind-${items.length}-${total.toStringAsFixed(0)}',
-                            onSegmentTap: (index) => _selectCategory(
-                              index,
-                              itemCount: items.length,
-                              shouldScrollList: true,
-                            ),
+                      child: const Center(
+                        child: Text(
+                          '표시할 통계가 없습니다.',
+                          style: TextStyle(
+                            color: Color(0xFF8E939D),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
-                        const SizedBox(height: 18),
-                        Column(
-                          children: items.asMap().entries.map((entry) {
-                            final index = entry.key;
-                            final item = entry.value;
-                            final ratio = total == 0 ? 0.0 : item.value / total;
-                            return _StatsLegendRow(
-                              key: _categoryRowKeys[index],
-                              item: item,
-                              ratio: ratio,
-                              color: statsPalette[index % statsPalette.length],
-                              selected: index == selectedIndex,
-                              dimmed: selectedIndex >= 0 && index != selectedIndex,
-                              onTap: () => _selectCategory(
+                      ),
+                    )
+                  else
+                    Container(
+                      padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(color: const Color(0xFFE6EAF0)),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Color(0x0A14171C),
+                            blurRadius: 18,
+                            offset: Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                targetType == EntryType.income
+                                    ? '수입 분석'
+                                    : '지출 분석',
+                                style: const TextStyle(
+                                  color: Color(0xFF14171C),
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              const Spacer(),
+                              Text(
+                                _periodCardLabel,
+                                style: const TextStyle(
+                                  color: Color(0xFF8E939D),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 18),
+                          Center(
+                            child: _StatsDonutSection(
+                              items: items,
+                              total: total,
+                              selectedIndex: selectedIndex,
+                              selectedItem: selectedItem!,
+                              selectedRatio: selectedRatio,
+                              accentColor: selectedColor,
+                              colors: statsPalette,
+                              onBackgroundTap: _clearSelectedCategory,
+                              animationKey:
+                                  '${_rangeMode.name}-${_periodStart.toIso8601String()}-${_periodEnd.toIso8601String()}-$_selectedKind-${items.length}-${total.toStringAsFixed(0)}',
+                              onSegmentTap: (index) => _selectCategory(
                                 index,
                                 itemCount: items.length,
-                                shouldScrollList: false,
+                                shouldScrollList: true,
                               ),
-                            );
-                          }).toList(),
-                        ),
-                      ],
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+                          Column(
+                            children: items.asMap().entries.map((entry) {
+                              final index = entry.key;
+                              final item = entry.value;
+                              final ratio = total == 0
+                                  ? 0.0
+                                  : item.value / total;
+                              return _StatsLegendRow(
+                                key: _categoryRowKeys[index],
+                                item: item,
+                                ratio: ratio,
+                                color:
+                                    statsPalette[index % statsPalette.length],
+                                selected: index == selectedIndex,
+                                dimmed:
+                                    selectedIndex >= 0 &&
+                                    index != selectedIndex,
+                                onTap: () => _selectCategory(
+                                  index,
+                                  itemCount: items.length,
+                                  shouldScrollList: false,
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                if (trendPoints.isNotEmpty) ...[
-                  const SizedBox(height: 14),
-                  _AssetExpenseTrendCard(
-                    points: trendPoints,
-                    delta: periodDelta,
-                    type: targetType,
-                    mode: _rangeMode,
-                  ),
-                ],
+                  if (trendPoints.isNotEmpty) ...[
+                    const SizedBox(height: 14),
+                    _AssetExpenseTrendCard(
+                      points: trendPoints,
+                      delta: periodDelta,
+                      type: targetType,
+                      mode: _rangeMode,
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -804,14 +853,14 @@ class _StatsSummaryCard extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(20),
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-            decoration: BoxDecoration(
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+          decoration: BoxDecoration(
             color: selected ? color : Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
               color: selected ? color : const Color(0xFFE6EAF0),
-              ),
+            ),
             boxShadow: const [
               BoxShadow(
                 color: Color(0x0814171C),
@@ -829,11 +878,15 @@ class _StatsSummaryCard extends StatelessWidget {
                     width: 16,
                     height: 16,
                     decoration: BoxDecoration(
-                      color: selected ? Colors.white.withValues(alpha: 0.22) : color.withValues(alpha: 0.1),
+                      color: selected
+                          ? Colors.white.withValues(alpha: 0.22)
+                          : color.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(99),
                     ),
                     child: Icon(
-                      label == '수입' ? Icons.south_west_rounded : Icons.north_east_rounded,
+                      label == '수입'
+                          ? Icons.south_west_rounded
+                          : Icons.north_east_rounded,
                       size: 11,
                       color: selected ? Colors.white : color,
                     ),
@@ -877,10 +930,7 @@ class _StatsSummaryCard extends StatelessWidget {
 }
 
 class _StatsDateRangeField extends StatelessWidget {
-  const _StatsDateRangeField({
-    required this.value,
-    required this.onTap,
-  });
+  const _StatsDateRangeField({required this.value, required this.onTap});
 
   final String value;
   final VoidCallback onTap;
@@ -1009,7 +1059,9 @@ class _FixedExpenseStatsCard extends StatelessWidget {
               Expanded(
                 child: _StatsFixedMetric(
                   label: '변동 지출',
-                  value: _formatStatsWon(variableAmount.clamp(0, double.infinity)),
+                  value: _formatStatsWon(
+                    variableAmount.clamp(0, double.infinity),
+                  ),
                   color: const Color(0xFF6B7280),
                 ),
               ),
@@ -1152,7 +1204,9 @@ class _StatsDonutSection extends StatelessWidget {
                         );
                       },
                       child: Column(
-                        key: ValueKey('${selectedItem.key}-${selectedItem.value}'),
+                        key: ValueKey(
+                          '${selectedItem.key}-${selectedItem.value}',
+                        ),
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           const Text(
@@ -1378,17 +1432,23 @@ class _StatsDonutPainter extends CustomPainter {
     final hasSingleFullSegment = values.length == 1;
     for (var i = 0; i < values.length; i++) {
       final normalizedSweep = (values[i] / total) * math.pi * 2;
-      final gap = hasSingleFullSegment ? 0.0 : math.min(0.028, normalizedSweep * 0.18);
+      final gap = hasSingleFullSegment
+          ? 0.0
+          : math.min(0.028, normalizedSweep * 0.18);
       final sweepAngle = math.max(0.0, (normalizedSweep - gap) * progress);
       final isSelected = i == selectedIndex;
       final strokeWidth = isSelected
-          ? lerpDouble(baseStrokeWidth, selectedStrokeWidth, selectionProgress) ??
-              selectedStrokeWidth
+          ? lerpDouble(
+                  baseStrokeWidth,
+                  selectedStrokeWidth,
+                  selectionProgress,
+                ) ??
+                selectedStrokeWidth
           : lerpDouble(baseStrokeWidth, 18, selectionProgress) ?? 18;
       final segmentRadius = isSelected
           ? baseInnerRadius +
-              (strokeWidth / 2) +
-              (selectedOuterExtension * selectionProgress)
+                (strokeWidth / 2) +
+                (selectedOuterExtension * selectionProgress)
           : baseRadius;
       final segmentRect = Rect.fromCircle(
         center: Offset(size.width / 2, size.height / 2),
@@ -1399,14 +1459,18 @@ class _StatsDonutPainter extends CustomPainter {
         ..strokeCap = StrokeCap.butt
         ..strokeWidth = strokeWidth
         ..color = isSelected
-            ? Color.lerp(colors[i].withValues(alpha: 0.74), colors[i], selectionProgress) ??
-                colors[i]
+            ? Color.lerp(
+                    colors[i].withValues(alpha: 0.74),
+                    colors[i],
+                    selectionProgress,
+                  ) ??
+                  colors[i]
             : Color.lerp(
-                  colors[i].withValues(alpha: 0.56),
-                  colors[i].withValues(alpha: 0.36),
-                  selectionProgress,
-                ) ??
-                colors[i].withValues(alpha: 0.36);
+                    colors[i].withValues(alpha: 0.56),
+                    colors[i].withValues(alpha: 0.36),
+                    selectionProgress,
+                  ) ??
+                  colors[i].withValues(alpha: 0.36);
       canvas.drawArc(segmentRect, startAngle, sweepAngle, false, paint);
       startAngle += normalizedSweep;
     }
@@ -1423,7 +1487,7 @@ class _StatsDonutPainter extends CustomPainter {
 }
 
 String _formatStatsWon(double value) {
-  return '₩${NumberFormat('#,###').format(value.round())}';
+  return formatCurrency(value);
 }
 
 String _formatStatsRatio(double ratio) {
@@ -1452,7 +1516,6 @@ const List<Color> _statsIncomePalette = [
   Color(0xFFEAF2FF),
   Color(0xFFF3F7FF),
 ];
-
 
 class _CompactPageHeader extends StatelessWidget {
   const _CompactPageHeader({
@@ -1522,7 +1585,9 @@ class _CompactHeaderButton extends StatelessWidget {
           child: Icon(
             icon,
             size: iconSize,
-            color: onTap == null ? const Color(0xFFCDD4DE) : const Color(0xFF14171C),
+            color: onTap == null
+                ? const Color(0xFFCDD4DE)
+                : const Color(0xFF14171C),
           ),
         ),
       ),
@@ -1575,9 +1640,7 @@ class _NotificationSourceAppIcon extends StatelessWidget {
       width: 18,
       height: 18,
       clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(4),
-      ),
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(4)),
       child: Image.memory(
         bytes,
         fit: BoxFit.cover,
@@ -1600,11 +1663,7 @@ class _NotificationSourceSmsIcon extends StatelessWidget {
         borderRadius: BorderRadius.circular(7),
       ),
       alignment: Alignment.center,
-      child: const Icon(
-        Icons.sms_outlined,
-        size: 14,
-        color: Color(0xFF4B8EFF),
-      ),
+      child: const Icon(Icons.sms_outlined, size: 14, color: Color(0xFF4B8EFF)),
     );
   }
 }
@@ -1647,8 +1706,9 @@ class _SmsInboxPageState extends State<SmsInboxPage> {
   final Set<String> _selectedIds = <String>{};
   final Set<String> _pendingRemovalIds = <String>{};
 
-  List<WalletKeeperSmsDraft> get _visibleDrafts =>
-      widget.drafts.where((draft) => !_pendingRemovalIds.contains(draft.id)).toList();
+  List<WalletKeeperSmsDraft> get _visibleDrafts => widget.drafts
+      .where((draft) => !_pendingRemovalIds.contains(draft.id))
+      .toList();
 
   void _handleBackPressed() {
     if (_deleteMode) {
@@ -1705,7 +1765,9 @@ class _SmsInboxPageState extends State<SmsInboxPage> {
       builder: (context) {
         return AlertDialog(
           backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(28),
+          ),
           titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
           contentPadding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
           actionsPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
@@ -1751,7 +1813,10 @@ class _SmsInboxPageState extends State<SmsInboxPage> {
                           borderSide: BorderSide(color: Color(0xFFD8DDE5)),
                         ),
                         focusedBorder: UnderlineInputBorder(
-                          borderSide: BorderSide(color: Color(0xFFFF6A5F), width: 2),
+                          borderSide: BorderSide(
+                            color: Color(0xFFFF6A5F),
+                            width: 2,
+                          ),
                         ),
                       ),
                     ),
@@ -1818,12 +1883,12 @@ class _SmsInboxPageState extends State<SmsInboxPage> {
     final actionBarBottomInset = math.max(0.0, bottomInset - 38);
     final applySystemBottomSafeArea = bottomInset == 0;
     final actionBarBottomPadding = bottomInset > 0 ? 22.0 : 12.0;
-    final inboxGuideText =
-        Platform.isIOS
-            ? 'iOS에서는 자동 감지 없이, 문자 가져오기 또는 문자 붙여넣기로 금융 내역을 직접 추가할 수 있습니다.\n왼쪽으로 밀면 삭제, 오른쪽으로 끝까지 밀면 바로 자동입력 저장됩니다.'
-            : 'SMS, MMS, 금융앱 알림 중 금융 내역 관련 내용이 자동 감지되어 문자함에 담깁니다.\n문자 가져오기는 휴대폰에 저장된 최근 문자를 수동으로 불러옵니다. 왼쪽으로 밀면 삭제, 오른쪽으로 끝까지 밀면 바로 자동입력 저장됩니다.';
+    final inboxGuideText = Platform.isIOS
+        ? 'iOS에서는 자동 감지 없이, 문자 가져오기 또는 문자 붙여넣기로 금융 내역을 직접 추가할 수 있습니다.\n왼쪽으로 밀면 삭제, 오른쪽으로 끝까지 밀면 바로 자동입력 저장됩니다.'
+        : 'SMS, MMS, 금융앱 알림 중 금융 내역 관련 내용이 자동 감지되어 문자함에 담깁니다.\n문자 가져오기는 휴대폰에 저장된 최근 문자를 수동으로 불러옵니다. 왼쪽으로 밀면 삭제, 오른쪽으로 끝까지 밀면 바로 자동입력 저장됩니다.';
     final allSelected =
-        _visibleDrafts.isNotEmpty && _selectedIds.length == _visibleDrafts.length;
+        _visibleDrafts.isNotEmpty &&
+        _selectedIds.length == _visibleDrafts.length;
     return PopScope(
       canPop: !_deleteMode,
       onPopInvokedWithResult: (didPop, _) {
@@ -1842,7 +1907,9 @@ class _SmsInboxPageState extends State<SmsInboxPage> {
               onBack: _handleBackPressed,
               trailing: [
                 _CompactHeaderButton(
-                  icon: _deleteMode ? Icons.close_rounded : Icons.delete_outline_rounded,
+                  icon: _deleteMode
+                      ? Icons.close_rounded
+                      : Icons.delete_outline_rounded,
                   iconSize: 27,
                   onTap: _visibleDrafts.isEmpty
                       ? null
@@ -1867,93 +1934,101 @@ class _SmsInboxPageState extends State<SmsInboxPage> {
               child: ListView(
                 padding: EdgeInsets.only(bottom: bottomInset + 24),
                 children: [
-                Container(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
-                  color: Colors.white,
-                  child: Text(
-                    inboxGuideText,
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
+                    color: Colors.white,
+                    child: Text(
+                      inboxGuideText,
                       style: TextStyle(
                         color: Color(0xFF59606B),
-                      fontSize: 13,
-                      height: 1.45,
-                      fontWeight: FontWeight.w500,
+                        fontSize: 13,
+                        height: 1.45,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ),
-                ),
-                if (_deleteMode)
-                  InkWell(
-                    onTap: () {
-                      setState(() {
-                        if (allSelected) {
-                          _selectedIds.clear();
-                        } else {
-                          _selectedIds
-                            ..clear()
-                            ..addAll(_visibleDrafts.map((draft) => draft.id));
-                        }
-                      });
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.fromLTRB(20, 6, 20, 8),
-                      color: Colors.white,
-                      child: Row(
-                        children: [
-                          SizedBox(
-                            width: 28,
-                            height: 28,
-                            child: Checkbox(
-                              value: allSelected,
-                              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              visualDensity: VisualDensity.compact,
-                              onChanged: (_) {
-                                setState(() {
-                                  if (allSelected) {
-                                    _selectedIds.clear();
-                                  } else {
-                                    _selectedIds
-                                      ..clear()
-                                      ..addAll(_visibleDrafts.map((draft) => draft.id));
-                                  }
-                                });
-                              },
+                  if (_deleteMode)
+                    InkWell(
+                      onTap: () {
+                        setState(() {
+                          if (allSelected) {
+                            _selectedIds.clear();
+                          } else {
+                            _selectedIds
+                              ..clear()
+                              ..addAll(_visibleDrafts.map((draft) => draft.id));
+                          }
+                        });
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.fromLTRB(20, 6, 20, 8),
+                        color: Colors.white,
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              width: 28,
+                              height: 28,
+                              child: Checkbox(
+                                value: allSelected,
+                                materialTapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
+                                visualDensity: VisualDensity.compact,
+                                onChanged: (_) {
+                                  setState(() {
+                                    if (allSelected) {
+                                      _selectedIds.clear();
+                                    } else {
+                                      _selectedIds
+                                        ..clear()
+                                        ..addAll(
+                                          _visibleDrafts.map(
+                                            (draft) => draft.id,
+                                          ),
+                                        );
+                                    }
+                                  });
+                                },
+                              ),
                             ),
+                            const SizedBox(width: 6),
+                            const Text(
+                              '전체선택',
+                              style: TextStyle(
+                                color: Color(0xFF20242B),
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  if (_visibleDrafts.isEmpty)
+                    Container(
+                      margin: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                      padding: const EdgeInsets.fromLTRB(22, 28, 22, 28),
+                      child: const Column(
+                        children: [
+                          Icon(
+                            Icons.mail_outline_rounded,
+                            size: 40,
+                            color: Color(0xFFB4BDC9),
                           ),
-                          const SizedBox(width: 6),
-                          const Text(
-                            '전체선택',
+                          SizedBox(height: 12),
+                          Text(
+                            '감지된 금융 문자가 아직 없습니다.',
                             style: TextStyle(
-                              color: Color(0xFF20242B),
+                              color: Color(0xFF6F7782),
                               fontSize: 13,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
                         ],
                       ),
-                    ),
-                  ),
-                if (_visibleDrafts.isEmpty)
-                  Container(
-                    margin: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-                    padding: const EdgeInsets.fromLTRB(22, 28, 22, 28),
-                    child: const Column(
-                      children: [
-                        Icon(Icons.mail_outline_rounded, size: 40, color: Color(0xFFB4BDC9)),
-                        SizedBox(height: 12),
-                        Text(
-                          '감지된 금융 문자가 아직 없습니다.',
-                          style: TextStyle(
-                            color: Color(0xFF6F7782),
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                else
-                  ..._visibleDrafts.map(
-                    (draft) {
+                    )
+                  else
+                    ..._visibleDrafts.map((draft) {
                       final tile = InkWell(
                         onTap: () {
                           if (_deleteMode) {
@@ -1972,7 +2047,9 @@ class _SmsInboxPageState extends State<SmsInboxPage> {
                           padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
                           decoration: const BoxDecoration(
                             color: Colors.white,
-                            border: Border(bottom: BorderSide(color: Color(0xFFEEF1F5))),
+                            border: Border(
+                              bottom: BorderSide(color: Color(0xFFEEF1F5)),
+                            ),
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1986,13 +2063,17 @@ class _SmsInboxPageState extends State<SmsInboxPage> {
                                         width: 28,
                                         height: 28,
                                         child: Checkbox(
-                                          value: _selectedIds.contains(draft.id),
+                                          value: _selectedIds.contains(
+                                            draft.id,
+                                          ),
                                           materialTapTargetSize:
                                               MaterialTapTargetSize.shrinkWrap,
                                           visualDensity: VisualDensity.compact,
                                           onChanged: (_) {
                                             setState(() {
-                                              if (_selectedIds.contains(draft.id)) {
+                                              if (_selectedIds.contains(
+                                                draft.id,
+                                              )) {
                                                 _selectedIds.remove(draft.id);
                                               } else {
                                                 _selectedIds.add(draft.id);
@@ -2004,7 +2085,9 @@ class _SmsInboxPageState extends State<SmsInboxPage> {
                                     ),
                                   Expanded(
                                     child: Text(
-                                      DateFormat('MM.dd HH:mm:ss').format(draft.date),
+                                      DateFormat(
+                                        'MM.dd HH:mm:ss',
+                                      ).format(draft.date),
                                       style: const TextStyle(
                                         color: Color(0xFF98A1AD),
                                         fontSize: 11,
@@ -2023,7 +2106,9 @@ class _SmsInboxPageState extends State<SmsInboxPage> {
                                     const _NotificationSourceSmsIcon()
                                   else
                                     Text(
-                                      draft.sourceAddress.isEmpty ? '알 수 없음' : draft.sourceAddress,
+                                      draft.sourceAddress.isEmpty
+                                          ? '알 수 없음'
+                                          : draft.sourceAddress,
                                       style: const TextStyle(
                                         color: Color(0xFF98A1AD),
                                         fontSize: 11,
@@ -2038,7 +2123,8 @@ class _SmsInboxPageState extends State<SmsInboxPage> {
                                 children: [
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           draft.title,
@@ -2082,8 +2168,8 @@ class _SmsInboxPageState extends State<SmsInboxPage> {
                                           color: draft.type == EntryType.expense
                                               ? const Color(0xFFFF6A5F)
                                               : draft.type == EntryType.income
-                                                  ? const Color(0xFF1FA463)
-                                                  : const Color(0xFF2F6BFF),
+                                              ? const Color(0xFF1FA463)
+                                              : const Color(0xFF2F6BFF),
                                           fontSize: 16,
                                           fontWeight: FontWeight.w800,
                                         ),
@@ -2113,7 +2199,11 @@ class _SmsInboxPageState extends State<SmsInboxPage> {
                           alignment: Alignment.centerLeft,
                           child: Row(
                             children: const [
-                              Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 22),
+                              Icon(
+                                Icons.auto_awesome_rounded,
+                                color: Colors.white,
+                                size: 22,
+                              ),
                               SizedBox(width: 8),
                               Text(
                                 '바로 저장',
@@ -2142,7 +2232,11 @@ class _SmsInboxPageState extends State<SmsInboxPage> {
                                 ),
                               ),
                               SizedBox(width: 8),
-                              Icon(Icons.delete_outline_rounded, color: Colors.white, size: 22),
+                              Icon(
+                                Icons.delete_outline_rounded,
+                                color: Colors.white,
+                                size: 22,
+                              ),
                             ],
                           ),
                         ),
@@ -2161,11 +2255,13 @@ class _SmsInboxPageState extends State<SmsInboxPage> {
                               content: const Text('이 감지 문자를 문자함에서 삭제할까요?'),
                               actions: [
                                 TextButton(
-                                  onPressed: () => Navigator.of(context).pop(false),
+                                  onPressed: () =>
+                                      Navigator.of(context).pop(false),
                                   child: const Text('취소'),
                                 ),
                                 FilledButton(
-                                  onPressed: () => Navigator.of(context).pop(true),
+                                  onPressed: () =>
+                                      Navigator.of(context).pop(true),
                                   style: FilledButton.styleFrom(
                                     backgroundColor: const Color(0xFFFF6A5F),
                                   ),
@@ -2185,8 +2281,7 @@ class _SmsInboxPageState extends State<SmsInboxPage> {
                         },
                         child: tile,
                       );
-                    },
-                  ),
+                    }),
                 ],
               ),
             ),
@@ -2216,7 +2311,9 @@ class _SmsInboxPageState extends State<SmsInboxPage> {
                         style: FilledButton.styleFrom(
                           backgroundColor: const Color(0xFFFF6A5F),
                           minimumSize: const Size.fromHeight(48),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
                         ),
                         child: const Text('선택삭제'),
                       )
@@ -2241,7 +2338,9 @@ class _SmsInboxPageState extends State<SmsInboxPage> {
                               onPressed: widget.onPasteFromClipboard,
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: const Color(0xFFFF6A5F),
-                                side: const BorderSide(color: Color(0xFFFFD2CD)),
+                                side: const BorderSide(
+                                  color: Color(0xFFFFD2CD),
+                                ),
                                 minimumSize: const Size.fromHeight(48),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(16),
@@ -2289,10 +2388,7 @@ class SmsSettingsPage extends StatelessWidget {
       color: const Color(0xFFF7F8FA),
       child: Column(
         children: [
-          _CompactPageHeader(
-            title: '문자설정',
-            onBack: onBack,
-          ),
+          _CompactPageHeader(title: '문자설정', onBack: onBack),
           Expanded(
             child: ListView(
               children: [
@@ -2300,26 +2396,31 @@ class SmsSettingsPage extends StatelessWidget {
                 _SettingsSwitchRow(
                   title: 'SMS 수신 기능',
                   value: settings.smsReceiveEnabled,
-                  onChanged: (value) => onChanged(settings.copyWith(smsReceiveEnabled: value)),
+                  onChanged: (value) =>
+                      onChanged(settings.copyWith(smsReceiveEnabled: value)),
                 ),
                 if (showFinancialAppNotificationSetting)
                   _SettingsSwitchRow(
                     title: '금융 어플 알림 설정',
                     value: financialAppNotificationEnabled,
                     highlighted: !financialAppNotificationEnabled,
-                    emphasisLabel: !financialAppNotificationEnabled ? '알림 접근 권한 필요' : null,
+                    emphasisLabel: !financialAppNotificationEnabled
+                        ? '알림 접근 권한 필요'
+                        : null,
                     onChanged: (_) => onOpenFinancialAppNotificationSettings(),
                   ),
                 const _SettingsSectionTitle('문자설정'),
                 _SettingsSwitchRow(
                   title: '문자 자동 입력 기능',
                   value: settings.autoInputEnabled,
-                  onChanged: (value) => onChanged(settings.copyWith(autoInputEnabled: value)),
+                  onChanged: (value) =>
+                      onChanged(settings.copyWith(autoInputEnabled: value)),
                 ),
                 _SettingsSwitchRow(
                   title: '알림바에 문자 수신 알림 표시하기',
                   value: settings.showNotification,
-                  onChanged: (value) => onChanged(settings.copyWith(showNotification: value)),
+                  onChanged: (value) =>
+                      onChanged(settings.copyWith(showNotification: value)),
                 ),
               ],
             ),
@@ -2331,10 +2432,7 @@ class SmsSettingsPage extends StatelessWidget {
 }
 
 class _SettingsSectionTitle extends StatelessWidget {
-  const _SettingsSectionTitle(
-    this.title, {
-    this.topPadding = 18,
-  });
+  const _SettingsSectionTitle(this.title, {this.topPadding = 18});
 
   final String title;
   final double topPadding;
@@ -2512,7 +2610,9 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
           _attachmentPaths.isNotEmpty;
     }
     final sourceTitle = source?.title ?? draft?.title ?? '';
-    final sourceAmount = _formatAmountForEditing(source?.amount ?? draft?.amount ?? 0);
+    final sourceAmount = _formatAmountForEditing(
+      source?.amount ?? draft?.amount ?? 0,
+    );
     final sourceCategory = source?.category ?? draft?.category ?? '';
     final sourceNote = source?.note ?? draft?.note ?? '';
     final rawSourceType = source?.type ?? draft?.type ?? EntryType.expense;
@@ -2522,8 +2622,8 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
     final sourceMode = source?.isFixedExpense == true
         ? _EntryEditorMode.fixedExpense
         : sourceType == EntryType.income
-            ? _EntryEditorMode.income
-            : _EntryEditorMode.expense;
+        ? _EntryEditorMode.income
+        : _EntryEditorMode.expense;
     final sourceDate = source?.date ?? draft?.date;
     final sourceFixedDay = source?.fixedDay;
     final sourceAttachments = source?.attachmentPaths ?? const <String>[];
@@ -2566,7 +2666,8 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
     if (draft != null) {
       final cleanedNote = _cleanSmsDraftBody(draft.note);
       final normalizedTitle = draft.title.trim();
-      _titleController.text = normalizedTitle.isEmpty || normalizedTitle == draft.sourceAddress
+      _titleController.text =
+          normalizedTitle.isEmpty || normalizedTitle == draft.sourceAddress
           ? (cleanedNote.isEmpty ? '' : cleanedNote.split('\n').first)
           : normalizedTitle;
       _setAmountText(draft.amount.toStringAsFixed(0));
@@ -2595,8 +2696,8 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
     _mode = existing?.isFixedExpense == true
         ? _EntryEditorMode.fixedExpense
         : _type == EntryType.income
-            ? _EntryEditorMode.income
-            : _EntryEditorMode.expense;
+        ? _EntryEditorMode.income
+        : _EntryEditorMode.expense;
     _date = existing?.date ?? DateTime.now();
   }
 
@@ -2680,7 +2781,9 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFFFF695D),
               foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
             ),
             child: const Text(
               '나가기',
@@ -2740,7 +2843,9 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
         final current = _fixedDay ?? _date.day.clamp(1, 31);
         return AlertDialog(
           backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
           title: const Text(
             '매월 반복일 선택',
             style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
@@ -2764,7 +2869,9 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
                   child: Container(
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
-                      color: active ? const Color(0xFFE76158) : const Color(0xFFF5F6F8),
+                      color: active
+                          ? const Color(0xFFE76158)
+                          : const Color(0xFFF5F6F8),
                       shape: BoxShape.circle,
                     ),
                     child: Text(
@@ -2809,7 +2916,9 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
   }
 
   Future<void> _save() async {
-    final amount = double.tryParse(_amountController.text.replaceAll(',', '').trim());
+    final amount = double.tryParse(
+      _amountController.text.replaceAll(',', '').trim(),
+    );
     if (_titleController.text.trim().isEmpty ||
         _categoryController.text.trim().isEmpty ||
         amount == null ||
@@ -2831,7 +2940,10 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
             sourceTime: _date,
           );
     final entry = LedgerEntry(
-      id: existing?.id ?? widget.smsDraft?.id ?? DateTime.now().microsecondsSinceEpoch.toString(),
+      id:
+          existing?.id ??
+          widget.smsDraft?.id ??
+          DateTime.now().microsecondsSinceEpoch.toString(),
       title: _titleController.text.trim(),
       amount: amount,
       category: _categoryController.text.trim(),
@@ -2905,9 +3017,8 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
     }
     final selectedPaths = await Navigator.of(context).push<List<String>>(
       MaterialPageRoute(
-        builder: (context) => WalletKeeperPhotoPickerPage(
-          initialPaths: _attachmentPaths,
-        ),
+        builder: (context) =>
+            WalletKeeperPhotoPickerPage(initialPaths: _attachmentPaths),
       ),
     );
     if (selectedPaths == null || !mounted) return;
@@ -2917,10 +3028,10 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
   }
 
   List<_EntryEditorMode> get _editableModes => const [
-        _EntryEditorMode.expense,
-        _EntryEditorMode.fixedExpense,
-        _EntryEditorMode.income,
-      ];
+    _EntryEditorMode.expense,
+    _EntryEditorMode.fixedExpense,
+    _EntryEditorMode.income,
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -2938,8 +3049,7 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
           ),
           Expanded(
             child: ListView(
-              keyboardDismissBehavior:
-                  ScrollViewKeyboardDismissBehavior.manual,
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.manual,
               padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
               children: [
                 Row(
@@ -2999,7 +3109,10 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
                           Text(
                             _mode == _EntryEditorMode.fixedExpense
                                 ? '매월 ${_fixedDay ?? _date.day}일'
-                                : DateFormat('yy/M/d (E)  a h:mm', 'ko_KR').format(_date),
+                                : DateFormat(
+                                    'yy/M/d (E)  a h:mm',
+                                    'ko_KR',
+                                  ).format(_date),
                             style: const TextStyle(
                               color: Color(0xFF20242B),
                               fontSize: 14,
@@ -3023,7 +3136,9 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
                   child: TextField(
                     controller: _amountController,
                     keyboardType: TextInputType.number,
-                    inputFormatters: const [_ThousandsSeparatorInputFormatter()],
+                    inputFormatters: const [
+                      _ThousandsSeparatorInputFormatter(),
+                    ],
                     style: const TextStyle(
                       color: Color(0xFF20242B),
                       fontSize: 14,
@@ -3056,50 +3171,53 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
                         focusNode: _categoryFocusNode,
                         optionsViewOpenDirection: autocompleteLayout.direction,
                         optionsBuilder: (textEditingValue) {
-                          final query =
-                              textEditingValue.text.trim().toLowerCase();
+                          final query = textEditingValue.text
+                              .trim()
+                              .toLowerCase();
                           final source = _categorySuggestions;
                           if (query.isEmpty) {
                             return source.take(12);
                           }
-                          return source.where(
-                            (item) => item.toLowerCase().contains(query),
-                          ).take(12);
+                          return source
+                              .where(
+                                (item) => item.toLowerCase().contains(query),
+                              )
+                              .take(12);
                         },
                         onSelected: (value) {
                           _setCategoryText(value, editedByUser: true);
                         },
                         fieldViewBuilder:
                             (context, controller, focusNode, onFieldSubmitted) {
-                          return TapRegion(
-                            groupId: _categoryAutocompleteGroup,
-                            onTapOutside: (_) => focusNode.unfocus(),
-                            child: TextField(
-                              key: _categoryFieldKey,
-                              controller: controller,
-                              focusNode: focusNode,
-                              onChanged: (_) {
-                                if (_applyingCategoryText) return;
-                                _categoryEditedByUser = true;
-                              },
-                              style: const TextStyle(
-                                color: Color(0xFF20242B),
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700,
-                              ),
-                              decoration: const InputDecoration(
-                                border: InputBorder.none,
-                                hintText: '분류 입력',
-                                hintStyle: TextStyle(
-                                  color: Color(0xFFA5ACB7),
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
+                              return TapRegion(
+                                groupId: _categoryAutocompleteGroup,
+                                onTapOutside: (_) => focusNode.unfocus(),
+                                child: TextField(
+                                  key: _categoryFieldKey,
+                                  controller: controller,
+                                  focusNode: focusNode,
+                                  onChanged: (_) {
+                                    if (_applyingCategoryText) return;
+                                    _categoryEditedByUser = true;
+                                  },
+                                  style: const TextStyle(
+                                    color: Color(0xFF20242B),
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                  decoration: const InputDecoration(
+                                    border: InputBorder.none,
+                                    hintText: '분류 입력',
+                                    hintStyle: TextStyle(
+                                      color: Color(0xFFA5ACB7),
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                    isDense: true,
+                                  ),
                                 ),
-                                isDense: true,
-                              ),
-                            ),
-                          );
-                        },
+                              );
+                            },
                         optionsViewBuilder: (context, onSelected, options) {
                           final list = options.toList(growable: false);
                           if (list.isEmpty) {
@@ -3318,16 +3436,16 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
                                       errorBuilder:
                                           (context, error, stackTrace) =>
                                               Container(
-                                        width: 86,
-                                        height: 86,
-                                        color: const Color(0xFFF1F4F8),
-                                        alignment: Alignment.center,
-                                        child: const Icon(
-                                          Icons.broken_image_outlined,
-                                          color: Color(0xFF9AA3B2),
-                                          size: 20,
-                                        ),
-                                      ),
+                                                width: 86,
+                                                height: 86,
+                                                color: const Color(0xFFF1F4F8),
+                                                alignment: Alignment.center,
+                                                child: const Icon(
+                                                  Icons.broken_image_outlined,
+                                                  color: Color(0xFF9AA3B2),
+                                                  size: 20,
+                                                ),
+                                              ),
                                     ),
                                   ),
                                   Positioned(
@@ -3336,10 +3454,9 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
                                     child: GestureDetector(
                                       onTap: () {
                                         setState(() {
-                                          _attachmentPaths =
-                                              List<String>.from(
-                                                _attachmentPaths,
-                                              )..removeAt(index);
+                                          _attachmentPaths = List<String>.from(
+                                            _attachmentPaths,
+                                          )..removeAt(index);
                                         });
                                       },
                                       child: Container(
@@ -3372,16 +3489,14 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
           Container(
             decoration: const BoxDecoration(
               color: Color(0xFFF7F8FA),
-              border: Border(
-                top: BorderSide(color: Color(0xFFE7EBF1)),
-              ),
+              border: Border(top: BorderSide(color: Color(0xFFE7EBF1))),
             ),
             padding: EdgeInsets.fromLTRB(
-                16,
-                10,
-                16,
-                actionBarBottomPadding + actionBarBottomInset,
-              ),
+              16,
+              10,
+              16,
+              actionBarBottomPadding + actionBarBottomInset,
+            ),
             child: SafeArea(
               top: false,
               bottom: applySystemBottomSafeArea,
@@ -3614,7 +3729,10 @@ class SettingsPage extends StatefulWidget {
     super.key,
     required this.session,
     required this.smsSettings,
+    required this.appSettings,
     required this.onOpenSmsSettings,
+    required this.onLanguageChanged,
+    required this.onCurrencyChanged,
     required this.onOpenProfileInfo,
     required this.onOpenInquiryList,
     required this.onOpenTermsInfo,
@@ -3627,7 +3745,11 @@ class SettingsPage extends StatefulWidget {
 
   final WalletKeeperUserSession? session;
   final WalletKeeperSmsSettings smsSettings;
+  final WalletKeeperAppSettings appSettings;
   final VoidCallback onOpenSmsSettings;
+  final Future<void> Function(WalletKeeperAppLanguage language)
+  onLanguageChanged;
+  final Future<void> Function(WalletKeeperCurrency currency) onCurrencyChanged;
   final VoidCallback onOpenProfileInfo;
   final VoidCallback onOpenInquiryList;
   final VoidCallback onOpenTermsInfo;
@@ -3644,6 +3766,8 @@ class SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<SettingsPage> {
   static const bool _showNaverLoginButton = false;
   String? _loadingProvider;
+  bool _savingLanguage = false;
+  bool _savingCurrency = false;
 
   Future<void> _runProviderAction(
     String provider,
@@ -3656,6 +3780,209 @@ class _SettingsPageState extends State<SettingsPage> {
     } finally {
       if (mounted) {
         setState(() => _loadingProvider = null);
+      }
+    }
+  }
+
+  Future<void> _showCurrencyPicker() async {
+    final selected = await showModalBottomSheet<WalletKeeperCurrency>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          top: false,
+          child: SingleChildScrollView(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                20,
+                20,
+                20,
+                12 + MediaQuery.viewInsetsOf(context).bottom,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    walletKeeperText(
+                      context,
+                      WalletKeeperTextKey.currencyDialogTitle,
+                    ),
+                    style: const TextStyle(
+                      color: Color(0xFF14171C),
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    walletKeeperText(
+                      context,
+                      WalletKeeperTextKey.currencyDialogDescription,
+                    ),
+                    style: const TextStyle(
+                      color: Color(0xFF7B8491),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  ...WalletKeeperCurrency.values.map(
+                    (currency) => ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(
+                        walletKeeperCurrencyLabel(currency),
+                        style: const TextStyle(
+                          color: Color(0xFF14171C),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      subtitle: Text(
+                        walletKeeperCurrencyDescription(currency),
+                        style: const TextStyle(
+                          color: Color(0xFF7B8491),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      trailing: Icon(
+                        currency == widget.appSettings.currency
+                            ? Icons.check_circle_rounded
+                            : Icons.radio_button_unchecked_rounded,
+                        color: currency == widget.appSettings.currency
+                            ? const Color(0xFF2F6BFF)
+                            : const Color(0xFFB7BFCA),
+                      ),
+                      onTap: () => Navigator.of(context).pop(currency),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+    if (!mounted ||
+        selected == null ||
+        selected == widget.appSettings.currency) {
+      return;
+    }
+    setState(() => _savingCurrency = true);
+    try {
+      await widget.onCurrencyChanged(selected);
+    } finally {
+      if (mounted) {
+        setState(() => _savingCurrency = false);
+      }
+    }
+  }
+
+  Future<void> _showLanguagePicker() async {
+    final selected = await showModalBottomSheet<WalletKeeperAppLanguage>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          top: false,
+          child: SingleChildScrollView(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                20,
+                20,
+                20,
+                12 + MediaQuery.viewInsetsOf(context).bottom,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    walletKeeperText(
+                      context,
+                      WalletKeeperTextKey.languageDialogTitle,
+                    ),
+                    style: const TextStyle(
+                      color: Color(0xFF14171C),
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    walletKeeperText(
+                      context,
+                      WalletKeeperTextKey.languageDialogDescription,
+                    ),
+                    style: const TextStyle(
+                      color: Color(0xFF7B8491),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  ...WalletKeeperAppLanguage.values.map(
+                    (language) => ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(
+                        language == WalletKeeperAppLanguage.system
+                            ? walletKeeperText(
+                                context,
+                                WalletKeeperTextKey.followSystem,
+                              )
+                            : walletKeeperLanguageLabel(language),
+                        style: const TextStyle(
+                          color: Color(0xFF14171C),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      subtitle: Text(
+                        walletKeeperLanguageDescription(language),
+                        style: const TextStyle(
+                          color: Color(0xFF7B8491),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      trailing: Icon(
+                        language == widget.appSettings.language
+                            ? Icons.check_circle_rounded
+                            : Icons.radio_button_unchecked_rounded,
+                        color: language == widget.appSettings.language
+                            ? const Color(0xFF2F6BFF)
+                            : const Color(0xFFB7BFCA),
+                      ),
+                      onTap: () => Navigator.of(context).pop(language),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+    if (!mounted ||
+        selected == null ||
+        selected == widget.appSettings.language) {
+      return;
+    }
+    setState(() => _savingLanguage = true);
+    try {
+      await widget.onLanguageChanged(selected);
+    } finally {
+      if (mounted) {
+        setState(() => _savingLanguage = false);
       }
     }
   }
@@ -3677,7 +4004,9 @@ class _SettingsPageState extends State<SettingsPage> {
       color: const Color(0xFFF7F8FA),
       child: Column(
         children: [
-          const _RootTabHeader(title: '설정'),
+          _RootTabHeader(
+            title: walletKeeperText(context, WalletKeeperTextKey.settingsTitle),
+          ),
           Expanded(
             child: ListView(
               padding: EdgeInsets.fromLTRB(16, 10, 16, bottomInset + 20),
@@ -3697,7 +4026,8 @@ class _SettingsPageState extends State<SettingsPage> {
                         CircleAvatar(
                           radius: 34,
                           backgroundColor: const Color(0xFFFFECE9),
-                          backgroundImage: account?.profileImage.isNotEmpty == true
+                          backgroundImage:
+                              account?.profileImage.isNotEmpty == true
                               ? NetworkImage(account!.profileImage)
                               : null,
                           child: account?.profileImage.isNotEmpty == true
@@ -3710,7 +4040,9 @@ class _SettingsPageState extends State<SettingsPage> {
                         ),
                         const SizedBox(height: 12),
                         Text(
-                          account?.name.isNotEmpty == true ? account!.name : '지갑지켜 사용자',
+                          account?.name.isNotEmpty == true
+                              ? account!.name
+                              : '지갑지켜 사용자',
                           style: const TextStyle(
                             color: Color(0xFF14171C),
                             fontSize: 18,
@@ -3743,7 +4075,8 @@ class _SettingsPageState extends State<SettingsPage> {
                             ),
                           ),
                         if (_showNaverLoginButton &&
-                            (linkedProvider == null || linkedProvider == 'naver')) ...[
+                            (linkedProvider == null ||
+                                linkedProvider == 'naver')) ...[
                           const SizedBox(height: 10),
                           _SocialLoginButtonTile(
                             label: '네이버로 시작하기',
@@ -3762,7 +4095,8 @@ class _SettingsPageState extends State<SettingsPage> {
                             ),
                           ),
                         ],
-                        if (linkedProvider == null || linkedProvider == 'google') ...[
+                        if (linkedProvider == null ||
+                            linkedProvider == 'google') ...[
                           const SizedBox(height: 10),
                           _SocialLoginButtonTile(
                             label: 'Google로 시작하기',
@@ -3780,7 +4114,8 @@ class _SettingsPageState extends State<SettingsPage> {
                           ),
                         ],
                         if (isApplePlatform &&
-                            (linkedProvider == null || linkedProvider == 'apple')) ...[
+                            (linkedProvider == null ||
+                                linkedProvider == 'apple')) ...[
                           const SizedBox(height: 10),
                           _SocialLoginButtonTile(
                             label: 'Apple로 시작하기',
@@ -3844,25 +4179,83 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
                 const SizedBox(height: 18),
                 _SettingsMenuSection(
-                  title: '설정',
+                  title: walletKeeperText(
+                    context,
+                    WalletKeeperTextKey.settingsSection,
+                  ),
                   children: [
+                    _SettingsMenuTile(
+                      icon: Icons.language_rounded,
+                      title: walletKeeperText(
+                        context,
+                        WalletKeeperTextKey.languageSetting,
+                      ),
+                      subtitle: _savingLanguage
+                          ? walletKeeperText(
+                              context,
+                              WalletKeeperTextKey.saving,
+                            )
+                          : (widget.appSettings.language ==
+                                    WalletKeeperAppLanguage.system
+                                ? walletKeeperText(
+                                    context,
+                                    WalletKeeperTextKey.followSystem,
+                                  )
+                                : walletKeeperLanguageLabel(
+                                    widget.appSettings.language,
+                                  )),
+                      onTap: _savingLanguage ? () {} : _showLanguagePicker,
+                    ),
+                    _SettingsMenuTile(
+                      icon: Icons.currency_exchange_rounded,
+                      title: walletKeeperText(
+                        context,
+                        WalletKeeperTextKey.currencySetting,
+                      ),
+                      subtitle: _savingCurrency
+                          ? walletKeeperText(
+                              context,
+                              WalletKeeperTextKey.saving,
+                            )
+                          : walletKeeperCurrencyLabel(
+                              widget.appSettings.currency,
+                            ),
+                      onTap: _savingCurrency ? () {} : _showCurrencyPicker,
+                    ),
                     if (showSmsSettingsEntry)
                       _SettingsMenuTile(
                         icon: Icons.sms_outlined,
-                        title: '문자 설정',
-                        subtitle: widget.smsSettings.smsReceiveEnabled ? '문자 감지 사용 중' : '문자 감지 꺼짐',
+                        title: walletKeeperText(
+                          context,
+                          WalletKeeperTextKey.smsSetting,
+                        ),
+                        subtitle: widget.smsSettings.smsReceiveEnabled
+                            ? walletKeeperText(
+                                context,
+                                WalletKeeperTextKey.smsOn,
+                              )
+                            : walletKeeperText(
+                                context,
+                                WalletKeeperTextKey.smsOff,
+                              ),
                         onTap: widget.onOpenSmsSettings,
                       ),
                     _SettingsMenuTile(
                       icon: Icons.support_agent_rounded,
-                      title: '문의',
-                      subtitle: '내 문의 내역과 새 문의 작성',
+                      title: walletKeeperText(
+                        context,
+                        WalletKeeperTextKey.inquiry,
+                      ),
+                      subtitle: '? ?? ??? ? ?? ??',
                       onTap: widget.onOpenInquiryList,
                     ),
                     _SettingsMenuTile(
                       icon: Icons.privacy_tip_outlined,
-                      title: '이용약관',
-                      subtitle: '이용약관과 개인정보처리방침 보기',
+                      title: walletKeeperText(
+                        context,
+                        WalletKeeperTextKey.terms,
+                      ),
+                      subtitle: '????? ???????? ??',
                       onTap: widget.onOpenTermsInfo,
                     ),
                   ],
@@ -3962,9 +4355,7 @@ class InquiryListPage extends StatelessWidget {
                     padding: EdgeInsets.fromLTRB(16, 10, 16, bottomInset + 92),
                     children: [
                       if (inquiries.isEmpty)
-                        _InquiryEmptyCard(
-                          onTap: onOpenCompose,
-                        )
+                        _InquiryEmptyCard(onTap: onOpenCompose)
                       else
                         ...List.generate(inquiries.length, (index) {
                           final inquiry = inquiries[index];
@@ -4003,9 +4394,7 @@ class InquiryListPage extends StatelessWidget {
 }
 
 class _InquiryEmptyCard extends StatelessWidget {
-  const _InquiryEmptyCard({
-    required this.onTap,
-  });
+  const _InquiryEmptyCard({required this.onTap});
 
   final VoidCallback onTap;
 
@@ -4085,7 +4474,9 @@ class InquiryDetailPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bottomInset = bottomOverlayHeightOf(context);
-    final createdLabel = DateFormat('yyyy.MM.dd HH:mm').format(inquiry.createdAt);
+    final createdLabel = DateFormat(
+      'yyyy.MM.dd HH:mm',
+    ).format(inquiry.createdAt);
     final repliedLabel = inquiry.repliedAt == null
         ? null
         : DateFormat('yyyy.MM.dd HH:mm').format(inquiry.repliedAt!);
@@ -4122,7 +4513,10 @@ class InquiryDetailPage extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(width: 12),
-                          _InquiryStatusChip(status: inquiry.status, hasReply: inquiry.hasReply),
+                          _InquiryStatusChip(
+                            status: inquiry.status,
+                            hasReply: inquiry.hasReply,
+                          ),
                         ],
                       ),
                       const SizedBox(height: 10),
@@ -4203,7 +4597,8 @@ class InquiryComposePage extends StatefulWidget {
     required String title,
     required String content,
     required String replyEmail,
-  }) onSave;
+  })
+  onSave;
 
   @override
   State<InquiryComposePage> createState() => _InquiryComposePageState();
@@ -4228,7 +4623,9 @@ class _InquiryComposePageState extends State<InquiryComposePage> {
     super.initState();
     _titleController = TextEditingController();
     _contentController = TextEditingController();
-    _replyEmailController = TextEditingController(text: widget.session?.email ?? '');
+    _replyEmailController = TextEditingController(
+      text: widget.session?.email ?? '',
+    );
   }
 
   @override
@@ -4320,10 +4717,7 @@ class _InquiryComposePageState extends State<InquiryComposePage> {
       color: const Color(0xFFF7F8FA),
       child: Column(
         children: [
-          _CompactPageHeader(
-            title: '문의쓰기',
-            onBack: widget.onBack,
-          ),
+          _CompactPageHeader(title: '문의쓰기', onBack: widget.onBack),
           Expanded(
             child: ListView(
               padding: EdgeInsets.fromLTRB(16, 10, 16, bottomInset + 96),
@@ -4439,7 +4833,12 @@ class _InquiryComposePageState extends State<InquiryComposePage> {
                           ),
                           filled: true,
                           fillColor: const Color(0xFFF7F8FA),
-                          contentPadding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
+                          contentPadding: const EdgeInsets.fromLTRB(
+                            14,
+                            14,
+                            14,
+                            16,
+                          ),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(14),
                             borderSide: BorderSide.none,
@@ -4455,9 +4854,7 @@ class _InquiryComposePageState extends State<InquiryComposePage> {
           Container(
             decoration: const BoxDecoration(
               color: Color(0xFFF7F8FA),
-              border: Border(
-                top: BorderSide(color: Color(0xFFE7EBF1)),
-              ),
+              border: Border(top: BorderSide(color: Color(0xFFE7EBF1))),
             ),
             padding: EdgeInsets.fromLTRB(
               16,
@@ -4527,18 +4924,21 @@ class AssetPage extends StatelessWidget {
     final bottomInset = bottomOverlayHeightOf(context);
     final now = DateTime.now();
     final startOfToday = DateTime(now.year, now.month, now.day);
-    final materializedThisMonthEntries = entries
-        .where(
-          (entry) => entry.isFixedExpense ||
-              (entry.date.year == now.year && entry.date.month == now.month),
-        )
-        .map(
-          (entry) => entry.isFixedExpense
-              ? walletKeeperMaterializeFixedEntryForMonth(entry, now)
-              : entry,
-        )
-        .toList()
-      ..sort((a, b) => b.date.compareTo(a.date));
+    final materializedThisMonthEntries =
+        entries
+            .where(
+              (entry) =>
+                  entry.isFixedExpense ||
+                  (entry.date.year == now.year &&
+                      entry.date.month == now.month),
+            )
+            .map(
+              (entry) => entry.isFixedExpense
+                  ? walletKeeperMaterializeFixedEntryForMonth(entry, now)
+                  : entry,
+            )
+            .toList()
+          ..sort((a, b) => b.date.compareTo(a.date));
     final summary = LedgerSummary.fromEntries(materializedThisMonthEntries);
     final visibleUpcomingExpenses = _buildUpcomingFixedExpenses(
       entries,
@@ -4549,12 +4949,11 @@ class AssetPage extends StatelessWidget {
     final incomeRatio = (summary.monthIncome <= 0 && summary.monthExpense <= 0)
         ? 0.5
         : summary.monthIncome /
-            math.max(1, summary.monthIncome + summary.monthExpense);
-    final expenseRatio =
-        (summary.monthIncome <= 0 && summary.monthExpense <= 0)
-            ? 0.0
-            : summary.monthExpense /
-                math.max(1, summary.monthIncome + summary.monthExpense);
+              math.max(1, summary.monthIncome + summary.monthExpense);
+    final expenseRatio = (summary.monthIncome <= 0 && summary.monthExpense <= 0)
+        ? 0.0
+        : summary.monthExpense /
+              math.max(1, summary.monthIncome + summary.monthExpense);
     final balanceRatio = (summary.monthIncome <= 0)
         ? 0.0
         : (summary.balance / math.max(1, summary.monthIncome)).clamp(0.0, 1.0);
@@ -4614,11 +5013,14 @@ class AssetPage extends StatelessWidget {
                           subtitle: '다가오는 지출이 생기면 이곳에 먼저 표시됩니다.',
                         )
                       else
-                        ...List.generate(visibleUpcomingExpenses.length, (index) {
+                        ...List.generate(visibleUpcomingExpenses.length, (
+                          index,
+                        ) {
                           final entry = visibleUpcomingExpenses[index];
                           return Padding(
                             padding: EdgeInsets.only(
-                              bottom: index == visibleUpcomingExpenses.length - 1
+                              bottom:
+                                  index == visibleUpcomingExpenses.length - 1
                                   ? 0
                                   : 16,
                             ),
@@ -4687,7 +5089,10 @@ class AssetPage extends StatelessWidget {
                       _AssetFlowMetricRow(
                         label: '수입',
                         color: const Color(0xFF68A9FF),
-                        amount: '+${_formatAssetAmount(summary.monthIncome)}원',
+                        amount: formatSignedCurrency(
+                          summary.monthIncome,
+                          alwaysShowSign: true,
+                        ),
                         amountColor: const Color(0xFF68A9FF),
                         ratio: incomeRatio.clamp(0.0, 1.0),
                       ),
@@ -4695,7 +5100,7 @@ class AssetPage extends StatelessWidget {
                       _AssetFlowMetricRow(
                         label: '지출',
                         color: const Color(0xFFFF6A5F),
-                        amount: '-${_formatAssetAmount(summary.monthExpense)}원',
+                        amount: formatSignedCurrency(-summary.monthExpense),
                         amountColor: const Color(0xFFFF6A5F),
                         ratio: expenseRatio.clamp(0.0, 1.0),
                       ),
@@ -4703,7 +5108,10 @@ class AssetPage extends StatelessWidget {
                       _AssetFlowMetricRow(
                         label: '남은금액',
                         color: const Color(0xFF29B15F),
-                        amount: '${summary.balance >= 0 ? '+' : '-'}${_formatAssetAmount(summary.balance.abs())}원',
+                        amount: formatSignedCurrency(
+                          summary.balance,
+                          alwaysShowSign: true,
+                        ),
                         amountColor: summary.balance >= 0
                             ? const Color(0xFF29B15F)
                             : const Color(0xFFFF6A5F),
@@ -4734,19 +5142,19 @@ class AssetPage extends StatelessWidget {
                             child: const Row(
                               children: [
                                 Text(
-                            '전체보기',
-                            style: TextStyle(
-                              color: Color(0xFF97A1AF),
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
+                                  '전체보기',
+                                  style: TextStyle(
+                                    color: Color(0xFF97A1AF),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
                                 SizedBox(width: 2),
                                 Icon(
-                            Icons.chevron_right_rounded,
-                            size: 18,
-                            color: Color(0xFF97A1AF),
-                          ),
+                                  Icons.chevron_right_rounded,
+                                  size: 18,
+                                  color: Color(0xFF97A1AF),
+                                ),
                               ],
                             ),
                           ),
@@ -4789,19 +5197,22 @@ List<LedgerEntry> _buildUpcomingFixedExpenses(
   required DateTime now,
   required DateTime startOfToday,
 }) {
-  final futureFixed = entries
-      .where(
-        (entry) =>
-            entry.type == EntryType.expense &&
-            !entry.date.isBefore(startOfToday) &&
-            _looksLikeFixedExpense(entry),
-      )
-      .toList()
-    ..sort((a, b) => a.date.compareTo(b.date));
+  final futureFixed =
+      entries
+          .where(
+            (entry) =>
+                entry.type == EntryType.expense &&
+                !entry.date.isBefore(startOfToday) &&
+                _looksLikeFixedExpense(entry),
+          )
+          .toList()
+        ..sort((a, b) => a.date.compareTo(b.date));
 
   final groups = <String, List<LedgerEntry>>{};
   for (final entry in entries.where((item) => item.type == EntryType.expense)) {
-    groups.putIfAbsent(_fixedExpenseSignature(entry), () => <LedgerEntry>[]).add(entry);
+    groups
+        .putIfAbsent(_fixedExpenseSignature(entry), () => <LedgerEntry>[])
+        .add(entry);
   }
 
   final projected = <LedgerEntry>[];
@@ -4830,7 +5241,8 @@ List<LedgerEntry> _buildUpcomingFixedExpenses(
     if (alreadyOccurredThisMonth) continue;
 
     final sameFutureAlreadyExists = futureFixed.any(
-      (entry) => _fixedExpenseSignature(entry) == _fixedExpenseSignature(sample),
+      (entry) =>
+          _fixedExpenseSignature(entry) == _fixedExpenseSignature(sample),
     );
     if (sameFutureAlreadyExists) continue;
 
@@ -4854,7 +5266,8 @@ List<LedgerEntry> _buildUpcomingFixedExpenses(
   merged.sort((a, b) => a.date.compareTo(b.date));
   final seen = <String>{};
   return merged.where((entry) {
-    final key = '${_fixedExpenseSignature(entry)}|${entry.date.year}-${entry.date.month}-${entry.date.day}';
+    final key =
+        '${_fixedExpenseSignature(entry)}|${entry.date.year}-${entry.date.month}-${entry.date.day}';
     if (!seen.add(key)) return false;
     return true;
   }).toList();
@@ -4879,8 +5292,12 @@ List<LedgerEntry> _statsEntriesForRange(
 
     var cursor = startMonth;
     while (!cursor.isAfter(endMonth)) {
-      final materialized = walletKeeperMaterializeFixedEntryForMonth(entry, cursor);
-      if (!materialized.date.isBefore(start) && !materialized.date.isAfter(end)) {
+      final materialized = walletKeeperMaterializeFixedEntryForMonth(
+        entry,
+        cursor,
+      );
+      if (!materialized.date.isBefore(start) &&
+          !materialized.date.isAfter(end)) {
         result.add(materialized);
       }
       cursor = DateTime(cursor.year, cursor.month + 1);
@@ -4894,9 +5311,13 @@ String _fixedExpenseSignature(LedgerEntry entry) =>
 
 bool _hasMonthlyRecurringPattern(List<LedgerEntry> group) {
   if (group.length < 2) return false;
-  final sorted = List<LedgerEntry>.from(group)..sort((a, b) => b.date.compareTo(a.date));
+  final sorted = List<LedgerEntry>.from(group)
+    ..sort((a, b) => b.date.compareTo(a.date));
   for (var index = 0; index < sorted.length - 1; index++) {
-    final diff = sorted[index].date.difference(sorted[index + 1].date).inDays.abs();
+    final diff = sorted[index].date
+        .difference(sorted[index + 1].date)
+        .inDays
+        .abs();
     if (diff >= 25 && diff <= 35) return true;
   }
   return false;
@@ -4904,7 +5325,8 @@ bool _hasMonthlyRecurringPattern(List<LedgerEntry> group) {
 
 bool _looksLikeFixedExpense(LedgerEntry entry) {
   if (entry.isFixedExpense) return true;
-  final combined = '${entry.title} ${entry.category} ${entry.note}'.toLowerCase();
+  final combined = '${entry.title} ${entry.category} ${entry.note}'
+      .toLowerCase();
   const fixedKeywords = [
     '고정',
     '자동이체',
@@ -4945,7 +5367,11 @@ List<_StatsTrendPoint> _buildRecentTrendPoints(
         label = DateFormat('M/d', 'ko_KR').format(periodStart);
       case _StatsRangeMode.monthly:
         periodStart = DateTime(anchorStart.year, anchorStart.month - shift, 1);
-        periodEndExclusive = DateTime(periodStart.year, periodStart.month + 1, 1);
+        periodEndExclusive = DateTime(
+          periodStart.year,
+          periodStart.month + 1,
+          1,
+        );
         label = DateFormat('M월', 'ko_KR').format(periodStart);
       case _StatsRangeMode.yearly:
         periodStart = DateTime(anchorStart.year - shift, 1, 1);
@@ -4960,18 +5386,19 @@ List<_StatsTrendPoint> _buildRecentTrendPoints(
         );
     }
 
-    final amount = _statsEntriesForRange(
-      entries,
-      start: periodStart,
-      end: periodEndExclusive.subtract(const Duration(microseconds: 1)),
-    )
-        .where(
-          (entry) =>
-              entry.type == type &&
-              !entry.date.isBefore(periodStart) &&
-              entry.date.isBefore(periodEndExclusive),
-        )
-        .fold<double>(0, (sum, entry) => sum + entry.amount);
+    final amount =
+        _statsEntriesForRange(
+              entries,
+              start: periodStart,
+              end: periodEndExclusive.subtract(const Duration(microseconds: 1)),
+            )
+            .where(
+              (entry) =>
+                  entry.type == type &&
+                  !entry.date.isBefore(periodStart) &&
+                  entry.date.isBefore(periodEndExclusive),
+            )
+            .fold<double>(0, (sum, entry) => sum + entry.amount);
     return _StatsTrendPoint(
       periodStart: periodStart,
       amount: amount,
@@ -5001,10 +5428,7 @@ class AssetFlowHistoryPage extends StatelessWidget {
       color: const Color(0xFFF7F8FA),
       child: Column(
         children: [
-          _CompactPageHeader(
-            title: '최근 자금 흐름',
-            onBack: onBack,
-          ),
+          _CompactPageHeader(title: '최근 자금 흐름', onBack: onBack),
           Expanded(
             child: ListView(
               padding: EdgeInsets.fromLTRB(16, 10, 16, bottomInset + 24),
@@ -5073,10 +5497,7 @@ class AssetUpcomingExpensesPage extends StatelessWidget {
       color: const Color(0xFFF7F8FA),
       child: Column(
         children: [
-          _CompactPageHeader(
-            title: '다가오는 지출',
-            onBack: onBack,
-          ),
+          _CompactPageHeader(title: '다가오는 지출', onBack: onBack),
           Expanded(
             child: ListView(
               padding: EdgeInsets.fromLTRB(16, 10, 16, bottomInset + 24),
@@ -5099,7 +5520,12 @@ class AssetUpcomingExpensesPage extends StatelessWidget {
                           Expanded(
                             child: _AssetMiniSummary(
                               label: '이번 달 예정',
-                              value: '${_formatAssetAmount(thisMonth.fold<double>(0, (sum, entry) => sum + entry.amount))}원',
+                              value: formatCurrency(
+                                thisMonth.fold<double>(
+                                  0,
+                                  (sum, entry) => sum + entry.amount,
+                                ),
+                              ),
                               accent: const Color(0xFFFF6A5F),
                             ),
                           ),
@@ -5107,7 +5533,7 @@ class AssetUpcomingExpensesPage extends StatelessWidget {
                           Expanded(
                             child: _AssetMiniSummary(
                               label: '전체 예정',
-                              value: '${_formatAssetAmount(total)}원',
+                              value: formatCurrency(total),
                               accent: const Color(0xFF2F6BFF),
                             ),
                           ),
@@ -5149,7 +5575,9 @@ class AssetUpcomingExpensesPage extends StatelessWidget {
                             const SizedBox(height: 14),
                             ...List.generate(upcoming.length, (index) {
                               final entry = upcoming[index];
-                              final isProjected = entry.id.startsWith('projected:');
+                              final isProjected = entry.id.startsWith(
+                                'projected:',
+                              );
                               return Column(
                                 children: [
                                   _UpcomingExpenseAnalysisRow(
@@ -5178,10 +5606,7 @@ class AssetUpcomingExpensesPage extends StatelessWidget {
 }
 
 class TermsInfoPage extends StatefulWidget {
-  const TermsInfoPage({
-    super.key,
-    required this.onBack,
-  });
+  const TermsInfoPage({super.key, required this.onBack});
 
   final VoidCallback onBack;
 
@@ -5350,9 +5775,7 @@ class _PolicyActionTile extends StatelessWidget {
 }
 
 class _PolicyDocumentDialog extends StatelessWidget {
-  const _PolicyDocumentDialog({
-    required this.document,
-  });
+  const _PolicyDocumentDialog({required this.document});
 
   final WalletKeeperPolicyDocument document;
 
@@ -5441,8 +5864,14 @@ String _policyHtmlToReadableText(String html) {
       .replaceAll(RegExp(r'<li[^>]*>', caseSensitive: false), '• ')
       .replaceAll(RegExp(r'</li>', caseSensitive: false), '\n')
       .replaceAll(RegExp(r'</(ul|ol)>', caseSensitive: false), '\n')
-      .replaceAll(RegExp(r'<(div|section|table|tr)[^>]*>', caseSensitive: false), '\n')
-      .replaceAll(RegExp(r'</(div|section|table|tr|td|th)>', caseSensitive: false), '\n')
+      .replaceAll(
+        RegExp(r'<(div|section|table|tr)[^>]*>', caseSensitive: false),
+        '\n',
+      )
+      .replaceAll(
+        RegExp(r'</(div|section|table|tr|td|th)>', caseSensitive: false),
+        '\n',
+      )
       .replaceAll(RegExp(r'<[^>]+>'), '')
       .replaceAll('&nbsp;', ' ')
       .replaceAll('&amp;', '&')
@@ -5492,8 +5921,12 @@ class _MemoEditorPageState extends State<MemoEditorPage> {
   @override
   void initState() {
     super.initState();
-    _titleController = TextEditingController(text: widget.existing?.title ?? '');
-    _contentController = TextEditingController(text: widget.existing?.content ?? '');
+    _titleController = TextEditingController(
+      text: widget.existing?.title ?? '',
+    );
+    _contentController = TextEditingController(
+      text: widget.existing?.content ?? '',
+    );
   }
 
   @override
@@ -5633,7 +6066,8 @@ class _MemoEditorPageState extends State<MemoEditorPage> {
                     ),
                     decoration: InputDecoration(
                       border: InputBorder.none,
-                      hintText: '${DateFormat('yyyy년 M월', 'ko_KR').format(widget.month)} 메모를 입력하세요.',
+                      hintText:
+                          '${DateFormat('yyyy년 M월', 'ko_KR').format(widget.month)} 메모를 입력하세요.',
                     ),
                   ),
                 ),
@@ -5803,8 +6237,7 @@ class _BudgetSettingsSheetState extends State<BudgetSettingsSheet> {
           ),
           Expanded(
             child: ListView(
-              keyboardDismissBehavior:
-                  ScrollViewKeyboardDismissBehavior.manual,
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.manual,
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
               children: [
                 SizedBox(
@@ -5812,12 +6245,16 @@ class _BudgetSettingsSheetState extends State<BudgetSettingsSheet> {
                   child: ListView.separated(
                     scrollDirection: Axis.horizontal,
                     itemCount: _budgetCategorySuggestions.length,
-                    separatorBuilder: (context, index) => const SizedBox(width: 8),
+                    separatorBuilder: (context, index) =>
+                        const SizedBox(width: 8),
                     itemBuilder: (context, index) {
                       final category = _budgetCategorySuggestions[index];
                       return ActionChip(
                         materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 11,
+                        ),
                         label: Text(
                           category,
                           style: const TextStyle(
@@ -5865,15 +6302,19 @@ class _BudgetSettingsSheetState extends State<BudgetSettingsSheet> {
                                 optionsViewOpenDirection:
                                     autocompleteLayout.direction,
                                 optionsBuilder: (textEditingValue) {
-                                  final query =
-                                      textEditingValue.text.trim().toLowerCase();
+                                  final query = textEditingValue.text
+                                      .trim()
+                                      .toLowerCase();
                                   final source = _budgetCategorySuggestions;
                                   if (query.isEmpty) {
                                     return source.take(12);
                                   }
-                                  return source.where(
-                                    (item) => item.toLowerCase().contains(query),
-                                  ).take(12);
+                                  return source
+                                      .where(
+                                        (item) =>
+                                            item.toLowerCase().contains(query),
+                                      )
+                                      .take(12);
                                 },
                                 onSelected: (value) {
                                   row.categoryController.text = value;
@@ -5888,20 +6329,18 @@ class _BudgetSettingsSheetState extends State<BudgetSettingsSheet> {
                                     ) {
                                       return TapRegion(
                                         groupId: row.categoryTapRegionGroup,
-                                        onTapOutside:
-                                            (_) => focusNode.unfocus(),
+                                        onTapOutside: (_) =>
+                                            focusNode.unfocus(),
                                         child: TextField(
                                           key: row.categoryFieldKey,
                                           controller: controller,
                                           focusNode: focusNode,
-                                          onTap:
-                                              () => setState(
-                                                () => _activeRowIndex = index,
-                                              ),
-                                          onChanged:
-                                              (_) => setState(
-                                                () => _activeRowIndex = index,
-                                              ),
+                                          onTap: () => setState(
+                                            () => _activeRowIndex = index,
+                                          ),
+                                          onChanged: (_) => setState(
+                                            () => _activeRowIndex = index,
+                                          ),
                                           style: const TextStyle(
                                             color: Color(0xFF20242B),
                                             fontSize: 14,
@@ -5915,141 +6354,123 @@ class _BudgetSettingsSheetState extends State<BudgetSettingsSheet> {
                                         ),
                                       );
                                     },
-                                optionsViewBuilder:
-                                    (context, onSelected, options) {
-                                      final list = options.toList(
-                                        growable: false,
-                                      );
-                                      if (list.isEmpty) {
-                                        return const SizedBox.shrink();
-                                      }
-                                      return Align(
-                                        alignment: Alignment.topLeft,
-                                        child: TapRegion(
-                                          groupId: row.categoryTapRegionGroup,
-                                          child: Material(
+                                optionsViewBuilder: (context, onSelected, options) {
+                                  final list = options.toList(growable: false);
+                                  if (list.isEmpty) {
+                                    return const SizedBox.shrink();
+                                  }
+                                  return Align(
+                                    alignment: Alignment.topLeft,
+                                    child: TapRegion(
+                                      groupId: row.categoryTapRegionGroup,
+                                      child: Material(
+                                        color: Colors.white,
+                                        elevation: 10,
+                                        borderRadius: BorderRadius.circular(14),
+                                        child: Container(
+                                          width: 220,
+                                          constraints: BoxConstraints(
+                                            maxHeight:
+                                                autocompleteLayout.maxHeight,
+                                          ),
+                                          decoration: BoxDecoration(
                                             color: Colors.white,
-                                            elevation: 10,
-                                            borderRadius:
-                                                BorderRadius.circular(14),
-                                            child: Container(
-                                              width: 220,
-                                              constraints: BoxConstraints(
-                                                maxHeight:
-                                                    autocompleteLayout
-                                                        .maxHeight,
-                                              ),
-                                              decoration: BoxDecoration(
-                                                color: Colors.white,
-                                                borderRadius:
-                                                    BorderRadius.circular(14),
-                                                border: Border.all(
-                                                  color: const Color(
-                                                    0xFFE6EAF0,
-                                                  ),
-                                                ),
-                                              ),
-                                              child: ListView.separated(
-                                                primary: false,
-                                                keyboardDismissBehavior:
-                                                    ScrollViewKeyboardDismissBehavior
-                                                        .manual,
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                      vertical: 6,
-                                                    ),
-                                                shrinkWrap: true,
-                                                itemCount: list.length,
-                                                separatorBuilder:
-                                                    (context, optionIndex) =>
-                                                        const Divider(
-                                                          height: 1,
-                                                          color: Color(
-                                                            0xFFF0F3F7,
-                                                          ),
-                                                        ),
-                                                itemBuilder:
-                                                    (context, optionIndex) {
-                                                      final option =
-                                                          list[optionIndex];
-                                                      final optionType =
-                                                          _walletKeeperSuggestedCategoryType(
-                                                            option,
-                                                          );
-                                                      final accent =
-                                                          _assetAccentForCategory(
-                                                            option,
-                                                            optionType,
-                                                          );
-                                                      return InkWell(
-                                                        onTap:
-                                                            () => onSelected(
-                                                              option,
-                                                            ),
-                                                        child: Padding(
-                                                          padding:
-                                                              const EdgeInsets.symmetric(
-                                                                horizontal: 14,
-                                                                vertical: 10,
-                                                              ),
-                                                          child: Row(
-                                                            children: [
-                                                              Container(
-                                                                width: 28,
-                                                                height: 28,
-                                                                decoration: BoxDecoration(
-                                                                  color: accent
-                                                                      .withValues(
-                                                                        alpha:
-                                                                            0.12,
-                                                                      ),
-                                                                  borderRadius:
-                                                                      BorderRadius.circular(
-                                                                        10,
-                                                                      ),
-                                                                ),
-                                                                alignment:
-                                                                    Alignment
-                                                                        .center,
-                                                                child: Icon(
-                                                                  _walletKeeperCategoryDisplayIcon(
-                                                                    option,
-                                                                    fallbackType:
-                                                                        optionType,
-                                                                  ),
-                                                                  size: 16,
-                                                                  color: accent,
-                                                                ),
-                                                              ),
-                                                              const SizedBox(
-                                                                width: 10,
-                                                              ),
-                                                              Expanded(
-                                                                child: Text(
-                                                                  option,
-                                                                  style:
-                                                                      const TextStyle(
-                                                                        color: Color(
-                                                                          0xFF20242B,
-                                                                        ),
-                                                                        fontSize:
-                                                                            13,
-                                                                        fontWeight:
-                                                                            FontWeight.w700,
-                                                                      ),
-                                                                ),
-                                                              ),
-                                                            ],
-                                                          ),
-                                                        ),
-                                                      );
-                                                    },
-                                              ),
+                                            borderRadius: BorderRadius.circular(
+                                              14,
+                                            ),
+                                            border: Border.all(
+                                              color: const Color(0xFFE6EAF0),
                                             ),
                                           ),
+                                          child: ListView.separated(
+                                            primary: false,
+                                            keyboardDismissBehavior:
+                                                ScrollViewKeyboardDismissBehavior
+                                                    .manual,
+                                            padding: const EdgeInsets.symmetric(
+                                              vertical: 6,
+                                            ),
+                                            shrinkWrap: true,
+                                            itemCount: list.length,
+                                            separatorBuilder:
+                                                (context, optionIndex) =>
+                                                    const Divider(
+                                                      height: 1,
+                                                      color: Color(0xFFF0F3F7),
+                                                    ),
+                                            itemBuilder: (context, optionIndex) {
+                                              final option = list[optionIndex];
+                                              final optionType =
+                                                  _walletKeeperSuggestedCategoryType(
+                                                    option,
+                                                  );
+                                              final accent =
+                                                  _assetAccentForCategory(
+                                                    option,
+                                                    optionType,
+                                                  );
+                                              return InkWell(
+                                                onTap: () => onSelected(option),
+                                                child: Padding(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 14,
+                                                        vertical: 10,
+                                                      ),
+                                                  child: Row(
+                                                    children: [
+                                                      Container(
+                                                        width: 28,
+                                                        height: 28,
+                                                        decoration: BoxDecoration(
+                                                          color: accent
+                                                              .withValues(
+                                                                alpha: 0.12,
+                                                              ),
+                                                          borderRadius:
+                                                              BorderRadius.circular(
+                                                                10,
+                                                              ),
+                                                        ),
+                                                        alignment:
+                                                            Alignment.center,
+                                                        child: Icon(
+                                                          _walletKeeperCategoryDisplayIcon(
+                                                            option,
+                                                            fallbackType:
+                                                                optionType,
+                                                          ),
+                                                          size: 16,
+                                                          color: accent,
+                                                        ),
+                                                      ),
+                                                      const SizedBox(width: 10),
+                                                      Expanded(
+                                                        child: Text(
+                                                          option,
+                                                          style:
+                                                              const TextStyle(
+                                                                color: Color(
+                                                                  0xFF20242B,
+                                                                ),
+                                                                fontSize: 13,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .w700,
+                                                              ),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              );
+                                            },
+                                          ),
                                         ),
-                                      );
-                                    },
+                                      ),
+                                    ),
+                                  );
+                                },
                               );
                             },
                           ),
@@ -6059,9 +6480,12 @@ class _BudgetSettingsSheetState extends State<BudgetSettingsSheet> {
                           flex: 4,
                           child: TextField(
                             controller: row.amountController,
-                            onTap: () => setState(() => _activeRowIndex = index),
+                            onTap: () =>
+                                setState(() => _activeRowIndex = index),
                             keyboardType: TextInputType.number,
-                            inputFormatters: const [_ThousandsSeparatorInputFormatter()],
+                            inputFormatters: const [
+                              _ThousandsSeparatorInputFormatter(),
+                            ],
                             textAlign: TextAlign.right,
                             style: const TextStyle(
                               color: Color(0xFF20242B),
@@ -6217,14 +6641,12 @@ _AutocompletePanelLayout _resolveAutocompletePanelLayout(
   final fieldBottom = fieldTop + renderBox.size.height;
   final availableAbove = math.max(0.0, fieldTop - safeTop);
   final availableBelow = math.max(0.0, keyboardTop - fieldBottom);
-  final direction =
-      availableBelow >= 180 || availableBelow >= availableAbove
-          ? OptionsViewOpenDirection.down
-          : OptionsViewOpenDirection.up;
-  final availableHeight =
-      direction == OptionsViewOpenDirection.down
-          ? availableBelow
-          : availableAbove;
+  final direction = availableBelow >= 180 || availableBelow >= availableAbove
+      ? OptionsViewOpenDirection.down
+      : OptionsViewOpenDirection.up;
+  final availableHeight = direction == OptionsViewOpenDirection.down
+      ? availableBelow
+      : availableAbove;
   return _AutocompletePanelLayout(
     direction: direction,
     maxHeight: math.max(1.0, math.min(preferredMaxHeight, availableHeight)),
@@ -6293,7 +6715,9 @@ class _SocialLoginButtonTile extends StatelessWidget {
                     height: 20,
                     child: CircularProgressIndicator(
                       strokeWidth: 2.2,
-                      valueColor: AlwaysStoppedAnimation<Color>(foregroundColor),
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        foregroundColor,
+                      ),
                     ),
                   )
                 else
@@ -6309,10 +6733,10 @@ class _SocialLoginButtonTile extends StatelessWidget {
                     loading
                         ? '로그인 중...'
                         : !enabled
-                            ? (disabledLabel ?? '$label (준비중)')
-                            : active
-                                ? '${_providerLabel(provider)} 연결됨'
-                                : label,
+                        ? (disabledLabel ?? '$label (준비중)')
+                        : active
+                        ? '${_providerLabel(provider)} 연결됨'
+                        : label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.center,
@@ -6364,10 +6788,7 @@ String _providerIconPath(String provider) {
 }
 
 class _SettingsMenuSection extends StatelessWidget {
-  const _SettingsMenuSection({
-    required this.title,
-    required this.children,
-  });
+  const _SettingsMenuSection({required this.title, required this.children});
 
   final String title;
   final List<Widget> children;
@@ -6464,10 +6885,7 @@ class _SettingsMenuTile extends StatelessWidget {
 }
 
 class _InquiryListCard extends StatelessWidget {
-  const _InquiryListCard({
-    required this.inquiry,
-    required this.onTap,
-  });
+  const _InquiryListCard({required this.inquiry, required this.onTap});
 
   final WalletKeeperInquiry inquiry;
   final VoidCallback onTap;
@@ -6566,10 +6984,7 @@ class _InquiryListCard extends StatelessWidget {
 }
 
 class _InquiryStatusChip extends StatelessWidget {
-  const _InquiryStatusChip({
-    required this.status,
-    required this.hasReply,
-  });
+  const _InquiryStatusChip({required this.status, required this.hasReply});
 
   final String status;
   final bool hasReply;
@@ -6581,18 +6996,18 @@ class _InquiryStatusChip extends StatelessWidget {
     final backgroundColor = resolved
         ? const Color(0xFFECFDF5)
         : inProgress
-            ? const Color(0xFFFFF7ED)
-            : const Color(0xFFEFF6FF);
+        ? const Color(0xFFFFF7ED)
+        : const Color(0xFFEFF6FF);
     final foregroundColor = resolved
         ? const Color(0xFF16A34A)
         : inProgress
-            ? const Color(0xFFEA580C)
-            : const Color(0xFF2563EB);
+        ? const Color(0xFFEA580C)
+        : const Color(0xFF2563EB);
     final label = resolved
         ? '답변완료'
         : inProgress
-            ? '처리중'
-            : '접수';
+        ? '처리중'
+        : '접수';
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
@@ -6659,10 +7074,7 @@ class _AssetMiniSummary extends StatelessWidget {
 }
 
 class _AssetInlineInfoRow extends StatelessWidget {
-  const _AssetInlineInfoRow({
-    required this.label,
-    required this.value,
-  });
+  const _AssetInlineInfoRow({required this.label, required this.value});
 
   final String label;
   final String value;
@@ -6725,7 +7137,9 @@ class _UpcomingExpenseAnalysisRow extends StatelessWidget {
             borderRadius: BorderRadius.circular(15),
           ),
           child: Icon(
-            entry.isFixedExpense ? Icons.event_repeat_rounded : _assetIconForCategory(entry.category),
+            entry.isFixedExpense
+                ? Icons.event_repeat_rounded
+                : _assetIconForCategory(entry.category),
             size: 21,
             color: accent,
           ),
@@ -6799,7 +7213,7 @@ class _UpcomingExpenseAnalysisRow extends StatelessWidget {
         ),
         const SizedBox(width: 10),
         Text(
-          '-${_formatAssetAmount(entry.amount)}원',
+          formatSignedCurrency(-entry.amount),
           style: const TextStyle(
             color: Color(0xFFFF6A5F),
             fontSize: 15,
@@ -6812,10 +7226,7 @@ class _UpcomingExpenseAnalysisRow extends StatelessWidget {
 }
 
 class _AssetSimpleEmpty extends StatelessWidget {
-  const _AssetSimpleEmpty({
-    required this.title,
-    required this.subtitle,
-  });
+  const _AssetSimpleEmpty({required this.title, required this.subtitle});
 
   final String title;
   final String subtitle;
@@ -6917,7 +7328,7 @@ class _AssetExpenseTrendCard extends StatelessWidget {
                   : [
                       TextSpan(text: '$periodWord보다 '),
                       TextSpan(
-                        text: '${_formatAssetAmount(delta.abs())}원',
+                        text: formatCurrency(delta.abs()),
                         style: TextStyle(
                           color: accentColor,
                           fontSize: 18,
@@ -6950,16 +7361,14 @@ double _assetTrendBarHeight(double amount, double maxAmount) {
 }
 
 class _AssetExpenseTrendChart extends StatefulWidget {
-  const _AssetExpenseTrendChart({
-    required this.points,
-    required this.type,
-  });
+  const _AssetExpenseTrendChart({required this.points, required this.type});
 
   final List<_StatsTrendPoint> points;
   final EntryType type;
 
   @override
-  State<_AssetExpenseTrendChart> createState() => _AssetExpenseTrendChartState();
+  State<_AssetExpenseTrendChart> createState() =>
+      _AssetExpenseTrendChartState();
 }
 
 class _AssetExpenseTrendChartState extends State<_AssetExpenseTrendChart>
@@ -6991,7 +7400,8 @@ class _AssetExpenseTrendChartState extends State<_AssetExpenseTrendChart>
   @override
   void didUpdateWidget(covariant _AssetExpenseTrendChart oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (_didPointsChange(oldWidget.points, widget.points) || oldWidget.type != widget.type) {
+    if (_didPointsChange(oldWidget.points, widget.points) ||
+        oldWidget.type != widget.type) {
       _selectedIndex = _defaultSelectedIndex(widget.points);
       _animationController.forward(from: 0);
     }
@@ -7009,7 +7419,10 @@ class _AssetExpenseTrendChartState extends State<_AssetExpenseTrendChart>
     return currentIndex >= 0 ? currentIndex : points.length - 1;
   }
 
-  bool _didPointsChange(List<_StatsTrendPoint> oldPoints, List<_StatsTrendPoint> newPoints) {
+  bool _didPointsChange(
+    List<_StatsTrendPoint> oldPoints,
+    List<_StatsTrendPoint> newPoints,
+  ) {
     if (identical(oldPoints, newPoints)) return false;
     if (oldPoints.length != newPoints.length) return true;
     for (var i = 0; i < oldPoints.length; i++) {
@@ -7045,36 +7458,44 @@ class _AssetExpenseTrendChartState extends State<_AssetExpenseTrendChart>
       child: LayoutBuilder(
         builder: (context, constraints) {
           const horizontalGap = 18.0;
-          final slotWidth = points.isEmpty ? constraints.maxWidth : constraints.maxWidth / points.length;
+          final slotWidth = points.isEmpty
+              ? constraints.maxWidth
+              : constraints.maxWidth / points.length;
           final chartBottom = chartHeight - bottomLabelSpace - 8;
           final selectedIndex =
-              _selectedIndex != null && _selectedIndex! >= 0 && _selectedIndex! < points.length
-                  ? _selectedIndex!
-                  : null;
-          final selectedPoint =
-              selectedIndex != null
-                  ? points[selectedIndex]
-                  : null;
+              _selectedIndex != null &&
+                  _selectedIndex! >= 0 &&
+                  _selectedIndex! < points.length
+              ? _selectedIndex!
+              : null;
+          final selectedPoint = selectedIndex != null
+              ? points[selectedIndex]
+              : null;
           final selectedBarHeight = selectedPoint == null
               ? 0.0
-              : _assetTrendBarHeight(selectedPoint.amount, maxAmount) * _entranceAnimation.value;
+              : _assetTrendBarHeight(selectedPoint.amount, maxAmount) *
+                    _entranceAnimation.value;
           final selectedX = selectedPoint == null
               ? 0.0
               : (slotWidth * selectedIndex!) + (slotWidth / 2);
-          final selectedY = selectedPoint == null ? 0.0 : chartBottom - selectedBarHeight;
+          final selectedY = selectedPoint == null
+              ? 0.0
+              : chartBottom - selectedBarHeight;
           final selectedPointerY = selectedPoint == null ? 0.0 : selectedY;
           const labelWidth = 108.0;
           const edgeLabelOverflow = 18.0;
           final labelLeft = selectedPoint == null
               ? 0.0
               : selectedIndex == 0
-                  ? -edgeLabelOverflow
-                  : selectedIndex == points.length - 1
-                      ? constraints.maxWidth - labelWidth + edgeLabelOverflow
-                      : (selectedX - (labelWidth / 2)).clamp(
-                          0.0,
-                          math.max(0.0, constraints.maxWidth - labelWidth),
-                        ).toDouble();
+              ? -edgeLabelOverflow
+              : selectedIndex == points.length - 1
+              ? constraints.maxWidth - labelWidth + edgeLabelOverflow
+              : (selectedX - (labelWidth / 2))
+                    .clamp(
+                      0.0,
+                      math.max(0.0, constraints.maxWidth - labelWidth),
+                    )
+                    .toDouble();
           return Stack(
             clipBehavior: Clip.none,
             children: [
@@ -7085,11 +7506,12 @@ class _AssetExpenseTrendChartState extends State<_AssetExpenseTrendChart>
                   final isSelected = selectedIndex == index;
                   final dimmed = selectedPoint != null && !isSelected;
                   final barHeight =
-                      _assetTrendBarHeight(point.amount, maxAmount) * _entranceAnimation.value;
+                      _assetTrendBarHeight(point.amount, maxAmount) *
+                      _entranceAnimation.value;
                   final color = point.isCurrent
                       ? (widget.type == EntryType.income
-                          ? const Color(0xFF56A0FF)
-                          : const Color(0xFFFF695D))
+                            ? const Color(0xFF56A0FF)
+                            : const Color(0xFFFF695D))
                       : const Color(0xFFD6DAE1);
                   return Expanded(
                     child: GestureDetector(
@@ -7108,7 +7530,9 @@ class _AssetExpenseTrendChartState extends State<_AssetExpenseTrendChart>
                             children: [
                               const Spacer(),
                               Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: horizontalGap / 2),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: horizontalGap / 2,
+                                ),
                                 child: SizedBox(
                                   width: double.infinity,
                                   child: AnimatedContainer(
@@ -7126,11 +7550,11 @@ class _AssetExpenseTrendChartState extends State<_AssetExpenseTrendChart>
                               Text(
                                 point.label,
                                 style: TextStyle(
-                              color: point.isCurrent
-                                  ? (widget.type == EntryType.income
-                                      ? const Color(0xFF56A0FF)
-                                      : const Color(0xFFFF695D))
-                                  : const Color(0xFF9AA3AF),
+                                  color: point.isCurrent
+                                      ? (widget.type == EntryType.income
+                                            ? const Color(0xFF56A0FF)
+                                            : const Color(0xFFFF695D))
+                                      : const Color(0xFF9AA3AF),
                                   fontSize: 12,
                                   fontWeight: FontWeight.w800,
                                 ),
@@ -7157,12 +7581,12 @@ class _AssetExpenseTrendChartState extends State<_AssetExpenseTrendChart>
                         child: FittedBox(
                           fit: BoxFit.scaleDown,
                           child: Text(
-                            '${_formatAssetAmount(selectedPoint.amount)}원',
+                            formatCurrency(selectedPoint.amount),
                             style: TextStyle(
                               color: selectedPoint.isCurrent
                                   ? (widget.type == EntryType.income
-                                      ? const Color(0xFF56A0FF)
-                                      : const Color(0xFFFF695D))
+                                        ? const Color(0xFF56A0FF)
+                                        : const Color(0xFFFF695D))
                                   : const Color(0xFF7B8491),
                               fontSize: 12,
                               fontWeight: FontWeight.w800,
@@ -7182,9 +7606,7 @@ class _AssetExpenseTrendChartState extends State<_AssetExpenseTrendChart>
 }
 
 class _AssetSoftCard extends StatelessWidget {
-  const _AssetSoftCard({
-    required this.child,
-  });
+  const _AssetSoftCard({required this.child});
 
   final Widget child;
 
@@ -7210,9 +7632,7 @@ class _AssetSoftCard extends StatelessWidget {
 }
 
 class _UpcomingExpenseRow extends StatelessWidget {
-  const _UpcomingExpenseRow({
-    required this.entry,
-  });
+  const _UpcomingExpenseRow({required this.entry});
 
   final LedgerEntry entry;
 
@@ -7229,7 +7649,9 @@ class _UpcomingExpenseRow extends StatelessWidget {
             borderRadius: BorderRadius.circular(14),
           ),
           child: Icon(
-            entry.isFixedExpense ? Icons.event_repeat_rounded : _assetIconForCategory(entry.category),
+            entry.isFixedExpense
+                ? Icons.event_repeat_rounded
+                : _assetIconForCategory(entry.category),
             size: 19,
             color: accent,
           ),
@@ -7264,8 +7686,8 @@ class _UpcomingExpenseRow extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 10),
-          Text(
-            '${_formatAssetAmount(entry.amount)}원',
+        Text(
+          formatCurrency(entry.amount),
           style: TextStyle(
             color: entry.type == EntryType.expense
                 ? const Color(0xFFFF6A5F)
@@ -7335,10 +7757,7 @@ class _AssetFlowMetricRow extends StatelessWidget {
 }
 
 class _AssetProgressBar extends StatelessWidget {
-  const _AssetProgressBar({
-    required this.ratio,
-    required this.color,
-  });
+  const _AssetProgressBar({required this.ratio, required this.color});
 
   final double ratio;
   final Color color;
@@ -7347,9 +7766,9 @@ class _AssetProgressBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(999),
-        child: SizedBox(
-          height: 16,
-          child: Stack(
+      child: SizedBox(
+        height: 16,
+        child: Stack(
           children: [
             Container(color: const Color(0xFFE9EDF3)),
             FractionallySizedBox(
@@ -7364,9 +7783,7 @@ class _AssetProgressBar extends StatelessWidget {
 }
 
 class _RecentAssetFlowRow extends StatelessWidget {
-  const _RecentAssetFlowRow({
-    required this.entry,
-  });
+  const _RecentAssetFlowRow({required this.entry});
 
   final LedgerEntry entry;
 
@@ -7379,12 +7796,11 @@ class _RecentAssetFlowRow extends StatelessWidget {
         Container(
           width: 40,
           height: 40,
-          decoration: BoxDecoration(
-            color: accent,
-            shape: BoxShape.circle,
-          ),
+          decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
           child: Icon(
-            entry.isFixedExpense ? Icons.event_repeat_rounded : _assetIconForCategory(entry.category),
+            entry.isFixedExpense
+                ? Icons.event_repeat_rounded
+                : _assetIconForCategory(entry.category),
             size: 19,
             color: Colors.white,
           ),
@@ -7419,11 +7835,14 @@ class _RecentAssetFlowRow extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 10),
-          Text(
-            '$prefix${_formatAssetAmount(entry.amount)}원',
-            style: TextStyle(
-              color: entry.type == EntryType.expense
-                  ? const Color(0xFFFF6A5F)
+        Text(
+          formatSignedCurrency(
+            prefix == '-' ? -entry.amount : entry.amount,
+            alwaysShowSign: true,
+          ),
+          style: TextStyle(
+            color: entry.type == EntryType.expense
+                ? const Color(0xFFFF6A5F)
                 : const Color(0xFF2F6BFF),
             fontSize: 14,
             fontWeight: FontWeight.w800,
@@ -7432,10 +7851,6 @@ class _RecentAssetFlowRow extends StatelessWidget {
       ],
     );
   }
-}
-
-String _formatAssetAmount(double amount) {
-  return formatCurrency(amount).replaceAll('₩', '').replaceAll('원', '').trim();
 }
 
 Color _assetAccentForEntry(LedgerEntry entry) {
@@ -7461,10 +7876,7 @@ IconData _assetIconForCategory(String category) {
 }
 
 class WalletKeeperPhotoPickerPage extends StatefulWidget {
-  const WalletKeeperPhotoPickerPage({
-    super.key,
-    required this.initialPaths,
-  });
+  const WalletKeeperPhotoPickerPage({super.key, required this.initialPaths});
 
   final List<String> initialPaths;
 
@@ -7474,7 +7886,8 @@ class WalletKeeperPhotoPickerPage extends StatefulWidget {
 }
 
 class _WalletKeeperPhotoPickerPageState
-    extends State<WalletKeeperPhotoPickerPage> with WidgetsBindingObserver {
+    extends State<WalletKeeperPhotoPickerPage>
+    with WidgetsBindingObserver {
   final ImagePicker _picker = ImagePicker();
   final ValueNotifier<List<String>> _selectedAssetIds =
       ValueNotifier<List<String>>(<String>[]);
@@ -7709,9 +8122,9 @@ class _WalletKeeperPhotoPickerPageState
     final imagePaths = <String>[];
     for (final imageId in selectedIds) {
       final media = _mediaList.cast<AssetEntity?>().firstWhere(
-            (item) => item?.id == imageId,
-            orElse: () => null,
-          );
+        (item) => item?.id == imageId,
+        orElse: () => null,
+      );
       if (media == null) continue;
       final file = await media.file;
       if (file != null) {
@@ -7769,7 +8182,10 @@ class _WalletKeeperPhotoPickerPageState
                     ),
                   ),
                   trailing: selected
-                      ? const Icon(Icons.check_rounded, color: Color(0xFFFF6A5F))
+                      ? const Icon(
+                          Icons.check_rounded,
+                          color: Color(0xFFFF6A5F),
+                        )
                       : null,
                   onTap: () async {
                     Navigator.of(context).pop();
@@ -7873,7 +8289,10 @@ class _WalletKeeperPhotoPickerPageState
                 ),
               ),
               const SizedBox(width: 4),
-              const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.black),
+              const Icon(
+                Icons.keyboard_arrow_down_rounded,
+                color: Colors.black,
+              ),
             ],
           ),
         ),
@@ -7904,64 +8323,64 @@ class _WalletKeeperPhotoPickerPageState
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _permissionDenied
-              ? _buildPermissionDeniedView()
-              : Column(
-                  children: [
-                    Expanded(
-                      child: GridView.builder(
-                        controller: _scrollController,
-                        padding: const EdgeInsets.only(
-                          left: 2,
-                          top: 2,
-                          right: 2,
-                          bottom: 2,
-                        ),
-                        gridDelegate:
-                            const SliverGridDelegateWithFixedCrossAxisCount(
+          ? _buildPermissionDeniedView()
+          : Column(
+              children: [
+                Expanded(
+                  child: GridView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.only(
+                      left: 2,
+                      top: 2,
+                      right: 2,
+                      bottom: 2,
+                    ),
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: 4,
                           crossAxisSpacing: 2,
                           mainAxisSpacing: 2,
                         ),
-                        itemCount: _mediaList.length,
-                        itemBuilder: (context, index) {
-                          final media = _mediaList[index];
-                          return _WalletKeeperGridImageItem(
-                            key: ValueKey(media.id),
-                            media: media,
-                            selectedAssetIds: _selectedAssetIds,
-                            onTap: () => _handleAssetTap(media),
-                          );
-                        },
-                      ),
-                    ),
-                    SafeArea(
-                      top: false,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.05),
-                              blurRadius: 10,
-                              offset: const Offset(0, -2),
-                            ),
-                          ],
-                        ),
-                        child: Center(
-                          child: IconButton(
-                            icon: const Icon(
-                              Icons.camera_alt,
-                              size: 32,
-                              color: Color(0xFF5E6672),
-                            ),
-                            onPressed: _pickFromCamera,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+                    itemCount: _mediaList.length,
+                    itemBuilder: (context, index) {
+                      final media = _mediaList[index];
+                      return _WalletKeeperGridImageItem(
+                        key: ValueKey(media.id),
+                        media: media,
+                        selectedAssetIds: _selectedAssetIds,
+                        onTap: () => _handleAssetTap(media),
+                      );
+                    },
+                  ),
                 ),
+                SafeArea(
+                  top: false,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.05),
+                          blurRadius: 10,
+                          offset: const Offset(0, -2),
+                        ),
+                      ],
+                    ),
+                    child: Center(
+                      child: IconButton(
+                        icon: const Icon(
+                          Icons.camera_alt,
+                          size: 32,
+                          color: Color(0xFF5E6672),
+                        ),
+                        onPressed: _pickFromCamera,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
     );
   }
 }
@@ -7997,9 +8416,7 @@ class _WalletKeeperGridImageItem extends StatelessWidget {
                 builder: (context, snapshot) {
                   final bytes = snapshot.data;
                   if (bytes == null || bytes.isEmpty) {
-                    return Container(
-                      color: const Color(0xFFF2F4F7),
-                    );
+                    return Container(color: const Color(0xFFF2F4F7));
                   }
                   return Image.memory(
                     bytes,
@@ -8008,10 +8425,7 @@ class _WalletKeeperGridImageItem extends StatelessWidget {
                   );
                 },
               ),
-              if (isSelected)
-                Container(
-                  color: const Color(0x66000000),
-                ),
+              if (isSelected) Container(color: const Color(0x66000000)),
               Positioned(
                 top: 8,
                 right: 8,
@@ -8051,10 +8465,7 @@ class _WalletKeeperGridImageItem extends StatelessWidget {
 }
 
 class _SettingsInfoCard extends StatelessWidget {
-  const _SettingsInfoCard({
-    required this.title,
-    required this.body,
-  });
+  const _SettingsInfoCard({required this.title, required this.body});
 
   final String title;
   final String body;
@@ -8200,10 +8611,7 @@ class _ProfileLinkedProviderCard extends StatelessWidget {
                         size: 16,
                         color: Color(0xFF7B8491),
                       )
-                    : Image.asset(
-                        iconPath,
-                        fit: BoxFit.contain,
-                      ),
+                    : Image.asset(iconPath, fit: BoxFit.contain),
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -8381,4 +8789,3 @@ class _SettingsKeyValue {
   final String label;
   final String value;
 }
-

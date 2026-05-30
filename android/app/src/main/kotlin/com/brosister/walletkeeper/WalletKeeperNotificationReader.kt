@@ -41,7 +41,7 @@ object WalletKeeperNotificationReader {
         val textBody = buildTextBody(notification.extras)?.trim().orEmpty()
         val body = listOf(title, textBody).filter { it.isNotBlank() }.joinToString(" ").trim()
         if (body.isBlank()) return null
-        val parsed = WalletKeeperNativeFinancialMessageParser.parse(body) ?: return null
+        val parsed = WalletKeeperNativeFinancialMessageParser.parse(context, body) ?: return null
 
         return mapOf(
             "id" to buildNotificationId(sbn),

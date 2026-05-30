@@ -59,6 +59,8 @@ const _smsShowNotificationKey = 'wallet_keeper_sms_show_notification_v1';
 const _smsHeuristicReportEnabledKey =
     'wallet_keeper_sms_heuristic_report_enabled_v1';
 const _smsImportWindowDaysKey = 'wallet_keeper_sms_import_window_days_v1';
+const _walletKeeperLanguageKey = 'wallet_keeper_language_v1';
+const _walletKeeperCurrencyKey = 'wallet_keeper_currency_v1';
 const _walletKeeperInstallIdKey = 'wallet_keeper_install_id_v1';
 const _walletKeeperSessionKey = 'wallet_keeper_session_v1';
 const _walletKeeperGuestSerialKey = 'wallet_keeper_guest_serial_v1';
@@ -212,89 +214,98 @@ class WalletKeeperApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'Wallet Keeper',
-      supportedLocales: const [
-        Locale('ko'),
-        Locale('en'),
-        Locale('ja'),
-        Locale('zh', 'Hans'),
-      ],
-      localeResolutionCallback: (locale, supportedLocales) {
-        final code = locale?.languageCode.toLowerCase();
-        if (code == 'ko') return const Locale('ko');
-        if (code == 'ja') return const Locale('ja');
-        if (code == 'zh') return const Locale('zh', 'Hans');
-        if (code == 'en') return const Locale('en');
-        return const Locale('en');
-      },
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      theme: ThemeData(
-        useMaterial3: true,
-        fontFamily: 'Pretendard',
-        textTheme: Typography.material2021().black.apply(
-          fontFamily: 'Pretendard',
-        ),
-        primaryTextTheme: Typography.material2021().white.apply(
-          fontFamily: 'Pretendard',
-        ),
-        scaffoldBackgroundColor: const Color(0xFFF5F7FB),
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF2F6BFF),
-          brightness: Brightness.light,
-        ),
-        appBarTheme: const AppBarTheme(
-          centerTitle: false,
-          backgroundColor: Color(0xFFF5F7FB),
-          surfaceTintColor: Colors.transparent,
-          elevation: 0,
-          scrolledUnderElevation: 0,
-          systemOverlayStyle: SystemUiOverlayStyle(
-            statusBarColor: Colors.transparent,
-            statusBarIconBrightness: Brightness.dark,
-            statusBarBrightness: Brightness.light,
-          ),
-          titleTextStyle: TextStyle(
+    return ValueListenableBuilder<WalletKeeperAppSettings>(
+      valueListenable: _walletKeeperAppSettingsNotifier,
+      builder: (context, appSettings, _) {
+        return MaterialApp(
+          debugShowCheckedModeBanner: false,
+          title: 'Wallet Keeper',
+          locale: walletKeeperLocaleOverrideOf(appSettings),
+          supportedLocales: const [
+            Locale('ko'),
+            Locale('en'),
+            Locale('ja'),
+            Locale('zh', 'Hans'),
+          ],
+          localeResolutionCallback: (locale, supportedLocales) {
+            final code = locale?.languageCode.toLowerCase();
+            if (code == 'ko') return const Locale('ko');
+            if (code == 'ja') return const Locale('ja');
+            if (code == 'zh') return const Locale('zh', 'Hans');
+            if (code == 'en') return const Locale('en');
+            return const Locale('en');
+          },
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          theme: ThemeData(
+            useMaterial3: true,
             fontFamily: 'Pretendard',
-            fontSize: 24,
-            fontWeight: FontWeight.w800,
-            color: Color(0xFF172033),
+            textTheme: Typography.material2021().black.apply(
+              fontFamily: 'Pretendard',
+            ),
+            primaryTextTheme: Typography.material2021().white.apply(
+              fontFamily: 'Pretendard',
+            ),
+            scaffoldBackgroundColor: const Color(0xFFF5F7FB),
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: const Color(0xFF2F6BFF),
+              brightness: Brightness.light,
+            ),
+            appBarTheme: const AppBarTheme(
+              centerTitle: false,
+              backgroundColor: Color(0xFFF5F7FB),
+              surfaceTintColor: Colors.transparent,
+              elevation: 0,
+              scrolledUnderElevation: 0,
+              systemOverlayStyle: SystemUiOverlayStyle(
+                statusBarColor: Colors.transparent,
+                statusBarIconBrightness: Brightness.dark,
+                statusBarBrightness: Brightness.light,
+              ),
+              titleTextStyle: TextStyle(
+                fontFamily: 'Pretendard',
+                fontSize: 24,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF172033),
+              ),
+            ),
+            cardTheme: CardThemeData(
+              color: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24),
+              ),
+            ),
+            inputDecorationTheme: InputDecorationTheme(
+              filled: true,
+              fillColor: Colors.white,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 16,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(18),
+                borderSide: BorderSide.none,
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(18),
+                borderSide: const BorderSide(color: Color(0xFFE1E7F0)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(18),
+                borderSide: const BorderSide(
+                  color: Color(0xFF2F6BFF),
+                  width: 1.4,
+                ),
+              ),
+            ),
           ),
-        ),
-        cardTheme: CardThemeData(
-          color: Colors.white,
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(24),
-          ),
-        ),
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: Colors.white,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: 16,
-          ),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(18),
-            borderSide: BorderSide.none,
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(18),
-            borderSide: const BorderSide(color: Color(0xFFE1E7F0)),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(18),
-            borderSide: const BorderSide(color: Color(0xFF2F6BFF), width: 1.4),
-          ),
-        ),
-      ),
-      home: const WalletKeeperStartupShell(),
+          home: const WalletKeeperStartupShell(),
+        );
+      },
     );
   }
 }
@@ -412,6 +423,8 @@ WalletKeeperFeatureAccess _fallbackFeatureAccess() {
 class _WalletKeeperStartupShellState extends State<WalletKeeperStartupShell> {
   final WalletKeeperSettingsRepository _settingsRepository =
       WalletKeeperSettingsRepository();
+  final WalletKeeperAppSettingsRepository _appSettingsRepository =
+      WalletKeeperAppSettingsRepository();
   final WalletKeeperVersionRepository _versionRepository =
       WalletKeeperVersionRepository();
   late final Future<_WalletKeeperStartupBundle> _startupFuture;
@@ -441,6 +454,12 @@ class _WalletKeeperStartupShellState extends State<WalletKeeperStartupShell> {
         );
       } catch (_) {}
     }
+    try {
+      final appSettings = await _appSettingsRepository.load().timeout(
+        const Duration(seconds: 5),
+      );
+      applyWalletKeeperAppSettings(appSettings);
+    } catch (_) {}
     WalletKeeperFeatureAccess featureAccess;
     try {
       featureAccess = await _settingsRepository.loadFeatureAccess().timeout(

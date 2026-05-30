@@ -73,7 +73,9 @@ class _OverviewPageState extends State<OverviewPage> {
   void _resetTabScroll(int index) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final controller = index == 2 ? _yearTabScrollController : _monthTabScrollController;
+      final controller = index == 2
+          ? _yearTabScrollController
+          : _monthTabScrollController;
       if (controller.hasClients) {
         controller.jumpTo(0);
       }
@@ -105,7 +107,8 @@ class _OverviewPageState extends State<OverviewPage> {
   }
 
   Future<void> _animateToMonthPage(int pageIndex) async {
-    if (!_monthPageController.hasClients || pageIndex == _currentMonthPage) return;
+    if (!_monthPageController.hasClients || pageIndex == _currentMonthPage)
+      return;
     await _monthPageController.animateToPage(
       pageIndex,
       duration: const Duration(milliseconds: 240),
@@ -114,7 +117,8 @@ class _OverviewPageState extends State<OverviewPage> {
   }
 
   Future<void> _animateToYearPage(int pageIndex) async {
-    if (!_yearPageController.hasClients || pageIndex == _currentYearPage) return;
+    if (!_yearPageController.hasClients || pageIndex == _currentYearPage)
+      return;
     await _yearPageController.animateToPage(
       pageIndex,
       duration: const Duration(milliseconds: 240),
@@ -122,7 +126,9 @@ class _OverviewPageState extends State<OverviewPage> {
     );
   }
 
-  ({double income, double expense, double total}) _monthSummary(DateTime month) {
+  ({double income, double expense, double total}) _monthSummary(
+    DateTime month,
+  ) {
     final monthEntries = _entriesForMonth(month);
     final income = monthEntries
         .where((entry) => entry.type == EntryType.income)
@@ -152,7 +158,8 @@ class _OverviewPageState extends State<OverviewPage> {
     return widget.entries
         .where((entry) {
           if (entry.isFixedExpense) return true;
-          return entry.date.year == month.year && entry.date.month == month.month;
+          return entry.date.year == month.year &&
+              entry.date.month == month.month;
         })
         .map(
           (entry) => entry.isFixedExpense
@@ -206,10 +213,7 @@ class _OverviewPageState extends State<OverviewPage> {
     );
   }
 
-  Widget _buildYearPage({
-    required DateTime year,
-    required double bottomInset,
-  }) {
+  Widget _buildYearPage({required DateTime year, required double bottomInset}) {
     final visibleMonths = _visibleMonthCountForYear(year);
 
     return ListView(
@@ -239,8 +243,9 @@ class _OverviewPageState extends State<OverviewPage> {
   Widget build(BuildContext context) {
     final bottomInset = bottomOverlayHeightOf(context);
     final showYearMode = widget.selectedTab == 2;
-    final currentSummary =
-        showYearMode ? _yearSummary(_selectedYear) : _monthSummary(_selectedMonth);
+    final currentSummary = showYearMode
+        ? _yearSummary(_selectedYear)
+        : _monthSummary(_selectedMonth);
     return Container(
       color: const Color(0xFFF7F8FA),
       child: Column(
@@ -269,34 +274,35 @@ class _OverviewPageState extends State<OverviewPage> {
               ],
             ),
           ),
-              _OverviewTabs(
-                labels: const ['달력', '일별', '월별', '예산'],
-                selectedIndex: widget.selectedTab,
-                onSelected: (index) {
-                  if (index == widget.selectedTab) return;
-                  setState(() {
-                    if (index == 2) {
-                      _selectedYear = DateTime(_selectedMonth.year);
-                      _expandedMonthlyAccordionMonth =
-                          _defaultExpandedMonthForYear(_selectedYear);
-                      final yearOffset = _selectedYear.year - _pageOriginYear.year;
-                      _currentYearPage = _initialYearPage + yearOffset;
-                      if (_yearPageController.hasClients) {
-                        _yearPageController.jumpToPage(_currentYearPage);
-                      }
-                    }
-                  });
-                  widget.onSelectedTabChanged(index);
-                  _resetTabScroll(index);
-                },
-              ),
-            _OverviewSummaryStrip(
-              income: currentSummary.income,
-              expense: currentSummary.expense,
-              total: currentSummary.total,
-            ),
-            Expanded(
-              child: showYearMode
+          _OverviewTabs(
+            labels: const ['달력', '일별', '월별', '예산'],
+            selectedIndex: widget.selectedTab,
+            onSelected: (index) {
+              if (index == widget.selectedTab) return;
+              setState(() {
+                if (index == 2) {
+                  _selectedYear = DateTime(_selectedMonth.year);
+                  _expandedMonthlyAccordionMonth = _defaultExpandedMonthForYear(
+                    _selectedYear,
+                  );
+                  final yearOffset = _selectedYear.year - _pageOriginYear.year;
+                  _currentYearPage = _initialYearPage + yearOffset;
+                  if (_yearPageController.hasClients) {
+                    _yearPageController.jumpToPage(_currentYearPage);
+                  }
+                }
+              });
+              widget.onSelectedTabChanged(index);
+              _resetTabScroll(index);
+            },
+          ),
+          _OverviewSummaryStrip(
+            income: currentSummary.income,
+            expense: currentSummary.expense,
+            total: currentSummary.total,
+          ),
+          Expanded(
+            child: showYearMode
                 ? PageView.builder(
                     controller: _yearPageController,
                     itemCount: _initialYearPage + 1,
@@ -427,13 +433,7 @@ class _DarkHeaderAction extends StatelessWidget {
         child: Stack(
           clipBehavior: Clip.none,
           children: [
-            Center(
-              child: Icon(
-                icon,
-                size: 27,
-                color: const Color(0xFF14171C),
-              ),
-            ),
+            Center(child: Icon(icon, size: 27, color: const Color(0xFF14171C))),
             if (badgeCount > 0)
               Positioned(
                 top: 3,
@@ -539,40 +539,40 @@ class _OverviewSummaryStrip extends StatelessWidget {
           bottom: BorderSide(color: Color(0xFFE6EAF0)),
         ),
       ),
-        child: Row(
-          children: [
-            Expanded(
-              child: _OverviewSummaryCell(
-                label: '수입',
-                value: income,
-                formatter: (value) => value.round() == 0
-                    ? '0'
-                    : '+${_compactDailyAmount(value)}',
-                color: const Color(0xFF56A0FF),
-              ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _OverviewSummaryCell(
+              label: '수입',
+              value: income,
+              formatter: (value) =>
+                  value.round() == 0 ? '0' : '+${_compactDailyAmount(value)}',
+              color: const Color(0xFF56A0FF),
             ),
-            Expanded(
-              child: _OverviewSummaryCell(
-                label: '지출',
-                value: expense,
-                formatter: (value) => value.round() == 0
-                    ? '0'
-                    : '-${_compactDailyAmount(value)}',
-                color: const Color(0xFFFF6A5F),
-              ),
+          ),
+          Expanded(
+            child: _OverviewSummaryCell(
+              label: '지출',
+              value: expense,
+              formatter: (value) =>
+                  value.round() == 0 ? '0' : '-${_compactDailyAmount(value)}',
+              color: const Color(0xFFFF6A5F),
             ),
-            Expanded(
-              child: _OverviewSummaryCell(
-                label: '남은금액',
-                value: total,
-                formatter: (value) => value.round() == 0
-                    ? '0'
-                    : value < 0
-                    ? '-${_compactDailyAmount(value.abs())}'
-                    : '+${_compactDailyAmount(value)}',
-                color: total < 0 ? const Color(0xFFFF6A5F) : const Color(0xFF56A0FF),
-              ),
+          ),
+          Expanded(
+            child: _OverviewSummaryCell(
+              label: '남은금액',
+              value: total,
+              formatter: (value) => value.round() == 0
+                  ? '0'
+                  : value < 0
+                  ? '-${_compactDailyAmount(value.abs())}'
+                  : '+${_compactDailyAmount(value)}',
+              color: total < 0
+                  ? const Color(0xFFFF6A5F)
+                  : const Color(0xFF56A0FF),
             ),
+          ),
         ],
       ),
     );
@@ -605,26 +605,26 @@ class _OverviewSummaryCell extends StatelessWidget {
               fontSize: 12,
               fontWeight: FontWeight.w700,
             ),
-            ),
-            const SizedBox(height: 4),
-            TweenAnimationBuilder<double>(
-              tween: Tween<double>(end: value),
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeOutCubic,
-              builder: (context, animatedValue, child) {
-                return Text(
-                  formatter(animatedValue),
-                  style: TextStyle(
-                    color: color,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                  ),
-                );
-              },
-            ),
-          ],
-        ),
-      );
+          ),
+          const SizedBox(height: 4),
+          TweenAnimationBuilder<double>(
+            tween: Tween<double>(end: value),
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            builder: (context, animatedValue, child) {
+              return Text(
+                formatter(animatedValue),
+                style: TextStyle(
+                  color: color,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -660,7 +660,10 @@ class WalletKeeperBottomBar extends StatelessWidget {
                   Expanded(
                     child: _BottomNavItem(
                       icon: Icons.receipt_long_rounded,
-                      label: '가계부',
+                      label: walletKeeperText(
+                        context,
+                        WalletKeeperTextKey.ledgerTab,
+                      ),
                       selected: selectedIndex == 0,
                       onTap: () => onSelected(0),
                     ),
@@ -668,7 +671,10 @@ class WalletKeeperBottomBar extends StatelessWidget {
                   Expanded(
                     child: _BottomNavItem(
                       icon: Icons.insert_chart_outlined_rounded,
-                      label: '통계',
+                      label: walletKeeperText(
+                        context,
+                        WalletKeeperTextKey.statsTab,
+                      ),
                       selected: selectedIndex == 1,
                       onTap: () => onSelected(1),
                     ),
@@ -677,7 +683,10 @@ class WalletKeeperBottomBar extends StatelessWidget {
                   Expanded(
                     child: _BottomNavItem(
                       icon: Icons.assessment_outlined,
-                      label: '리포트',
+                      label: walletKeeperText(
+                        context,
+                        WalletKeeperTextKey.assetTab,
+                      ),
                       selected: selectedIndex == 2,
                       onTap: () => onSelected(2),
                     ),
@@ -685,7 +694,10 @@ class WalletKeeperBottomBar extends StatelessWidget {
                   Expanded(
                     child: _BottomNavItem(
                       icon: Icons.settings_outlined,
-                      label: '설정',
+                      label: walletKeeperText(
+                        context,
+                        WalletKeeperTextKey.settingsTab,
+                      ),
                       selected: selectedIndex == 3,
                       onTap: () => onSelected(3),
                     ),
@@ -710,7 +722,11 @@ class WalletKeeperBottomBar extends StatelessWidget {
                         ),
                       ],
                     ),
-                    child: const Icon(Icons.add_rounded, color: Colors.white, size: 34),
+                    child: const Icon(
+                      Icons.add_rounded,
+                      color: Colors.white,
+                      size: 34,
+                    ),
                   ),
                 ),
               ),
@@ -765,7 +781,8 @@ class WalletKeeperAdBannerBar extends StatefulWidget {
   final ValueChanged<double>? onHeightChanged;
 
   @override
-  State<WalletKeeperAdBannerBar> createState() => _WalletKeeperAdBannerBarState();
+  State<WalletKeeperAdBannerBar> createState() =>
+      _WalletKeeperAdBannerBarState();
 }
 
 class _WalletKeeperAdBannerBarState extends State<WalletKeeperAdBannerBar> {
@@ -808,7 +825,8 @@ class _WalletKeeperAdBannerBarState extends State<WalletKeeperAdBannerBar> {
     final width = MediaQuery.sizeOf(context).width.truncate();
     if (_loadedWidth == width && _bannerAd != null) return;
 
-    final adaptiveSize = await AdSize.getCurrentOrientationAnchoredAdaptiveBannerAdSize(width);
+    final adaptiveSize =
+        await AdSize.getCurrentOrientationAnchoredAdaptiveBannerAdSize(width);
     if (!mounted || adaptiveSize == null) return;
 
     await _bannerAd?.dispose();
@@ -847,7 +865,9 @@ class _WalletKeeperAdBannerBarState extends State<WalletKeeperAdBannerBar> {
     if (_loadedWidth != MediaQuery.sizeOf(context).width.truncate()) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _loadBanner());
     }
-    final currentHeight = _loaded && _bannerAd != null ? _bannerAd!.size.height.toDouble() : 0.0;
+    final currentHeight = _loaded && _bannerAd != null
+        ? _bannerAd!.size.height.toDouble()
+        : 0.0;
     if (_reportedHeight != currentHeight) {
       _reportedHeight = currentHeight;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -861,7 +881,9 @@ class _WalletKeeperAdBannerBarState extends State<WalletKeeperAdBannerBar> {
       child: SizedBox(
         width: double.infinity,
         height: currentHeight,
-        child: _loaded && _bannerAd != null ? AdWidget(ad: _bannerAd!) : const SizedBox.shrink(),
+        child: _loaded && _bannerAd != null
+            ? AdWidget(ad: _bannerAd!)
+            : const SizedBox.shrink(),
       ),
     );
   }
@@ -874,7 +896,10 @@ Map<DateTime, List<LedgerEntry>> _groupEntriesByDay(List<LedgerEntry> entries) {
     grouped.putIfAbsent(key, () => []).add(entry);
   }
   final sortedKeys = grouped.keys.toList()..sort((a, b) => b.compareTo(a));
-  return {for (final key in sortedKeys) key: grouped[key]!..sort((a, b) => b.date.compareTo(a.date))};
+  return {
+    for (final key in sortedKeys)
+      key: grouped[key]!..sort((a, b) => b.date.compareTo(a.date)),
+  };
 }
 
 class _DailyLedgerTab extends StatelessWidget {
@@ -932,10 +957,7 @@ class _DailyLedgerTab extends StatelessWidget {
               ),
             ),
             if (index != dayGroups.length - 1)
-              Container(
-                height: 8,
-                color: const Color(0xFFF1F3F6),
-              ),
+              Container(height: 8, color: const Color(0xFFF1F3F6)),
           ],
         );
       }).toList(),
@@ -991,7 +1013,9 @@ class _CalendarLedgerTabState extends State<_CalendarLedgerTab> {
   Widget build(BuildContext context) {
     final month = widget.month;
     final monthStart = DateTime(month.year, month.month, 1);
-    final firstVisibleDay = monthStart.subtract(Duration(days: monthStart.weekday % 7));
+    final firstVisibleDay = monthStart.subtract(
+      Duration(days: monthStart.weekday % 7),
+    );
     final days = List<DateTime>.generate(42, (index) {
       final day = firstVisibleDay.add(Duration(days: index));
       return DateTime(day.year, day.month, day.day);
@@ -1013,11 +1037,11 @@ class _CalendarLedgerTabState extends State<_CalendarLedgerTab> {
           child: Row(
             children: List.generate(7, (index) {
               const labels = ['일', '월', '화', '수', '목', '금', '토'];
-                final color = switch (index) {
-                  0 => const Color(0xFFE27782),
-                  6 => const Color(0xFF56A0FF),
-                  _ => const Color(0xFF8E909A),
-                };
+              final color = switch (index) {
+                0 => const Color(0xFFE27782),
+                6 => const Color(0xFF56A0FF),
+                _ => const Color(0xFF8E909A),
+              };
               return Expanded(
                 child: Center(
                   child: Text(
@@ -1050,19 +1074,19 @@ class _CalendarLedgerTabState extends State<_CalendarLedgerTab> {
               final income = entries
                   .where((entry) => entry.type == EntryType.income)
                   .fold<double>(0, (sum, entry) => sum + entry.amount);
-                final expense = entries
-                    .where((entry) => entry.type == EntryType.expense)
-                    .fold<double>(0, (sum, entry) => sum + entry.amount);
-                final isCurrentMonth = day.month == month.month;
-                final isToday = day == highlightedToday;
-                final isSelected = _selectedDay != null && day == _selectedDay;
-                final isHoliday = _isKoreanPublicHoliday(day);
-                final dayColor = isHoliday
-                    ? const Color(0xFFE35A52)
-                    : isCurrentMonth
-                        ? const Color(0xFF7B7F89)
-                        : const Color(0xFFC1C5CD);
-                return InkWell(
+              final expense = entries
+                  .where((entry) => entry.type == EntryType.expense)
+                  .fold<double>(0, (sum, entry) => sum + entry.amount);
+              final isCurrentMonth = day.month == month.month;
+              final isToday = day == highlightedToday;
+              final isSelected = _selectedDay != null && day == _selectedDay;
+              final isHoliday = _isKoreanPublicHoliday(day);
+              final dayColor = isHoliday
+                  ? const Color(0xFFE35A52)
+                  : isCurrentMonth
+                  ? const Color(0xFF7B7F89)
+                  : const Color(0xFFC1C5CD);
+              return InkWell(
                 onTap: () {
                   setState(() {
                     _selectedDay = day;
@@ -1073,24 +1097,24 @@ class _CalendarLedgerTabState extends State<_CalendarLedgerTab> {
                   padding: const EdgeInsets.fromLTRB(0, 0, 0, 0),
                   child: Column(
                     children: [
-                        Container(
-                          width: 30,
-                          height: 30,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: isSelected
-                                ? const Color(0xFFE76158)
-                                : isToday
-                                    ? const Color(0xFFF3F4F7)
-                                    : Colors.transparent,
-                            borderRadius: BorderRadius.circular(15),
-                          ),
-                          child: Text(
-                            '${day.day}',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: isSelected ? Colors.white : dayColor,
-                              fontSize: 17,
+                      Container(
+                        width: 30,
+                        height: 30,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? const Color(0xFFE76158)
+                              : isToday
+                              ? const Color(0xFFF3F4F7)
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(15),
+                        ),
+                        child: Text(
+                          '${day.day}',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: isSelected ? Colors.white : dayColor,
+                            fontSize: 17,
                             height: 1,
                             fontWeight: FontWeight.w500,
                           ),
@@ -1103,12 +1127,12 @@ class _CalendarLedgerTabState extends State<_CalendarLedgerTab> {
                           child: FittedBox(
                             fit: BoxFit.scaleDown,
                             child: Text(
-                                '+${_compactDailyAmount(income)}',
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  color: Color(0xFF56A0FF),
-                                  fontSize: 10,
-                                  letterSpacing: -0.7,
+                              '+${_compactDailyAmount(income)}',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: Color(0xFF56A0FF),
+                                fontSize: 10,
+                                letterSpacing: -0.7,
                                 height: 1,
                                 fontWeight: FontWeight.w700,
                               ),
@@ -1245,7 +1269,9 @@ class _CalendarSelectedDayPanel extends StatelessWidget {
               ...List.generate(entries.length, (index) {
                 final entry = entries[index];
                 return Padding(
-                  padding: EdgeInsets.only(bottom: index == entries.length - 1 ? 0 : 14),
+                  padding: EdgeInsets.only(
+                    bottom: index == entries.length - 1 ? 0 : 14,
+                  ),
                   child: _CalendarSelectedDayRow(
                     entry: entry,
                     onTap: () => onEdit(existing: entry),
@@ -1261,10 +1287,7 @@ class _CalendarSelectedDayPanel extends StatelessWidget {
 }
 
 class _CalendarExpensePhrase {
-  const _CalendarExpensePhrase({
-    required this.label,
-    required this.color,
-  });
+  const _CalendarExpensePhrase({required this.label, required this.color});
 
   final String label;
   final Color color;
@@ -1281,13 +1304,20 @@ _CalendarExpensePhrase? _buildCalendarExpensePhrase(
   if (selectedExpense <= 0) return null;
 
   final expenseByDay = <DateTime, double>{};
-  for (final entry in monthEntries.where((entry) => entry.type == EntryType.expense)) {
+  for (final entry in monthEntries.where(
+    (entry) => entry.type == EntryType.expense,
+  )) {
     final key = DateTime(entry.date.year, entry.date.month, entry.date.day);
-    expenseByDay.update(key, (value) => value + entry.amount, ifAbsent: () => entry.amount);
+    expenseByDay.update(
+      key,
+      (value) => value + entry.amount,
+      ifAbsent: () => entry.amount,
+    );
   }
   if (expenseByDay.isEmpty) return null;
   final averageExpense =
-      expenseByDay.values.fold<double>(0, (sum, value) => sum + value) / expenseByDay.length;
+      expenseByDay.values.fold<double>(0, (sum, value) => sum + value) /
+      expenseByDay.length;
   if (averageExpense <= 0) return null;
 
   if (selectedExpense >= averageExpense * 1.2) {
@@ -1317,7 +1347,8 @@ class _CalendarSelectedDayRow extends StatefulWidget {
   final Future<void> Function() onDelete;
 
   @override
-  State<_CalendarSelectedDayRow> createState() => _CalendarSelectedDayRowState();
+  State<_CalendarSelectedDayRow> createState() =>
+      _CalendarSelectedDayRowState();
 }
 
 class _CalendarSelectedDayRowState extends State<_CalendarSelectedDayRow> {
@@ -1330,8 +1361,8 @@ class _CalendarSelectedDayRowState extends State<_CalendarSelectedDayRow> {
     final icon = _entryCategoryIcon(entry);
     final detailLine = _buildCalendarDetailLine(entry);
     final amountText = entry.type == EntryType.expense
-        ? '-${_compactDailyAmount(entry.amount)}원'
-        : '+${_compactDailyAmount(entry.amount)}원';
+        ? formatSignedCurrency(-entry.amount)
+        : formatSignedCurrency(entry.amount, alwaysShowSign: true);
     final valueColor = entry.type == EntryType.expense
         ? const Color(0xFFFF695D)
         : const Color(0xFF56A0FF);
@@ -1366,11 +1397,7 @@ class _CalendarSelectedDayRowState extends State<_CalendarSelectedDayRow> {
                   shape: BoxShape.circle,
                 ),
                 alignment: Alignment.center,
-                child: Icon(
-                  icon,
-                  size: 18,
-                  color: Colors.white,
-                ),
+                child: Icon(icon, size: 18, color: Colors.white),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -1425,13 +1452,19 @@ Color _calendarEntryAccent(LedgerEntry entry) {
     return const Color(0xFFE76158);
   }
   final category = entry.category.toLowerCase();
-  if (category.contains('식') || category.contains('food') || category.contains('cafe')) {
+  if (category.contains('식') ||
+      category.contains('food') ||
+      category.contains('cafe')) {
     return const Color(0xFFFFA83D);
   }
-  if (category.contains('교') || category.contains('taxi') || category.contains('car')) {
+  if (category.contains('교') ||
+      category.contains('taxi') ||
+      category.contains('car')) {
     return const Color(0xFF4B8EFF);
   }
-  if (category.contains('쇼') || category.contains('mart') || category.contains('shop')) {
+  if (category.contains('쇼') ||
+      category.contains('mart') ||
+      category.contains('shop')) {
     return const Color(0xFF2FB16D);
   }
   if (entry.type == EntryType.transfer) {
@@ -1460,15 +1493,23 @@ class _MonthlyLedgerTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final yearEntries = entries.where((entry) => entry.date.year == year.year).toList();
-    final sections = List<int>.generate(visibleMonths, (index) => visibleMonths - index);
+    final yearEntries = entries
+        .where((entry) => entry.date.year == year.year)
+        .toList();
+    final sections = List<int>.generate(
+      visibleMonths,
+      (index) => visibleMonths - index,
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: sections.map((monthNumber) {
         final monthDate = DateTime(year.year, monthNumber);
-        final monthEntries = yearEntries.where((entry) => entry.date.month == monthNumber).toList()
-          ..sort((a, b) => a.date.compareTo(b.date));
+        final monthEntries =
+            yearEntries
+                .where((entry) => entry.date.month == monthNumber)
+                .toList()
+              ..sort((a, b) => a.date.compareTo(b.date));
         final income = monthEntries
             .where((entry) => entry.type == EntryType.income)
             .fold<double>(0, (sum, entry) => sum + entry.amount);
@@ -1499,7 +1540,8 @@ class _MonthlyLedgerTab extends StatelessWidget {
                       children: _buildWeekRows(
                         monthDate: monthDate,
                         entries: monthEntries,
-                        highlightedDay: DateTime.now().year == monthDate.year &&
+                        highlightedDay:
+                            DateTime.now().year == monthDate.year &&
                                 DateTime.now().month == monthDate.month
                             ? DateTime.now().day
                             : null,
@@ -1520,8 +1562,12 @@ class _MonthlyLedgerTab extends StatelessWidget {
   }) {
     final monthStart = DateTime(monthDate.year, monthDate.month, 1);
     final monthEnd = DateTime(monthDate.year, monthDate.month + 1, 0);
-    final firstVisibleDay = monthStart.subtract(Duration(days: monthStart.weekday % 7));
-    final lastVisibleDay = monthEnd.add(Duration(days: 6 - (monthEnd.weekday % 7)));
+    final firstVisibleDay = monthStart.subtract(
+      Duration(days: monthStart.weekday % 7),
+    );
+    final lastVisibleDay = monthEnd.add(
+      Duration(days: 6 - (monthEnd.weekday % 7)),
+    );
 
     final rows = <Widget>[];
     var cursor = firstVisibleDay;
@@ -1529,7 +1575,11 @@ class _MonthlyLedgerTab extends StatelessWidget {
       final weekStart = cursor;
       final weekEnd = cursor.add(const Duration(days: 6));
       final weekEntries = entries.where((entry) {
-        final date = DateTime(entry.date.year, entry.date.month, entry.date.day);
+        final date = DateTime(
+          entry.date.year,
+          entry.date.month,
+          entry.date.day,
+        );
         return !date.isBefore(weekStart) && !date.isAfter(weekEnd);
       }).toList();
       final income = weekEntries
@@ -1539,7 +1589,8 @@ class _MonthlyLedgerTab extends StatelessWidget {
           .where((entry) => entry.type == EntryType.expense)
           .fold<double>(0, (sum, entry) => sum + entry.amount);
       final total = income - expense;
-      final highlight = highlightedDay != null &&
+      final highlight =
+          highlightedDay != null &&
           weekStart.day <= highlightedDay &&
           weekEnd.day >= highlightedDay;
 
@@ -1611,11 +1662,7 @@ class _MonthlyHeaderRow extends StatelessWidget {
               ],
             ),
           ),
-          _MonthlyMetricsRow(
-            income: income,
-            expense: expense,
-            total: total,
-          ),
+          _MonthlyMetricsRow(income: income, expense: expense, total: total),
         ],
       ),
     );
@@ -1659,11 +1706,7 @@ class _MonthlyWeekRow extends StatelessWidget {
               ),
             ),
           ),
-          _MonthlyMetricsRow(
-            income: income,
-            expense: expense,
-            total: total,
-          ),
+          _MonthlyMetricsRow(income: income, expense: expense, total: total),
         ],
       ),
     );
@@ -1694,7 +1737,9 @@ class _MonthlyMetricsRow extends StatelessWidget {
         const SizedBox(width: 14),
         _LedgerDayMetric(
           label: '지출',
-          value: expense.round() == 0 ? '0' : '-${_compactDailyAmount(expense)}',
+          value: expense.round() == 0
+              ? '0'
+              : '-${_compactDailyAmount(expense)}',
           color: const Color(0xFFFF7A70),
         ),
         const SizedBox(width: 14),
@@ -1703,11 +1748,9 @@ class _MonthlyMetricsRow extends StatelessWidget {
           value: total.round() == 0
               ? '0'
               : total < 0
-                  ? '-${_compactDailyAmount(total.abs())}'
-                  : '+${_compactDailyAmount(total)}',
-          color: total < 0
-              ? const Color(0xFFFF7A70)
-              : const Color(0xFF56A0FF),
+              ? '-${_compactDailyAmount(total.abs())}'
+              : '+${_compactDailyAmount(total)}',
+          color: total < 0 ? const Color(0xFFFF7A70) : const Color(0xFF56A0FF),
         ),
       ],
     );
@@ -1729,11 +1772,20 @@ class _SettlementLedgerTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final expenseEntries = entries.where((entry) => entry.type == EntryType.expense).toList();
-    final totalBudget = budgets.fold<double>(0, (sum, budget) => sum + budget.amount);
-    final totalSpent = expenseEntries.fold<double>(0, (sum, entry) => sum + entry.amount);
+    final expenseEntries = entries
+        .where((entry) => entry.type == EntryType.expense)
+        .toList();
+    final totalBudget = budgets.fold<double>(
+      0,
+      (sum, budget) => sum + budget.amount,
+    );
+    final totalSpent = expenseEntries.fold<double>(
+      0,
+      (sum, entry) => sum + entry.amount,
+    );
     final daysInMonth = DateTime(month.year, month.month + 1, 0).day;
-    final todayRatio = DateTime.now().year == month.year && DateTime.now().month == month.month
+    final todayRatio =
+        DateTime.now().year == month.year && DateTime.now().month == month.month
         ? (DateTime.now().day / daysInMonth).clamp(0.0, 1.0)
         : (DateTime.now().isBefore(month) ? 0.0 : 1.0);
 
@@ -1752,7 +1804,11 @@ class _SettlementLedgerTab extends StatelessWidget {
           ),
           child: Row(
             children: [
-              const Icon(Icons.edit_note_rounded, color: Color(0xFF14171C), size: 24),
+              const Icon(
+                Icons.edit_note_rounded,
+                color: Color(0xFF14171C),
+                size: 24,
+              ),
               const SizedBox(width: 10),
               const Expanded(
                 child: Text(
@@ -1768,7 +1824,10 @@ class _SettlementLedgerTab extends StatelessWidget {
                 onTap: onOpenSettings,
                 borderRadius: BorderRadius.circular(12),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
                   decoration: BoxDecoration(
                     color: const Color(0xFF23252A),
                     borderRadius: BorderRadius.circular(12),
@@ -1821,7 +1880,9 @@ class _SettlementLedgerTab extends StatelessWidget {
           ),
           ...budgets.map((budget) {
             final spent = expenseEntries
-                .where((entry) => entry.category.trim() == budget.category.trim())
+                .where(
+                  (entry) => entry.category.trim() == budget.category.trim(),
+                )
                 .fold<double>(0, (sum, entry) => sum + entry.amount);
             return _BudgetProgressRow(
               label: budget.category,
@@ -1859,7 +1920,9 @@ class _BudgetProgressRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final remaining = budgetAmount - spentAmount;
     final overBudget = remaining < 0;
-    final barColor = overBudget ? const Color(0xFFFF7A70) : const Color(0xFF56A0FF);
+    final barColor = overBudget
+        ? const Color(0xFFFF7A70)
+        : const Color(0xFF56A0FF);
     final visibleProgress = overBudget ? 1.0 : progressRatio.clamp(0.0, 1.0);
 
     return Container(
@@ -1930,8 +1993,11 @@ class _BudgetProgressRow extends StatelessWidget {
                           height: 60,
                           child: LayoutBuilder(
                             builder: (context, constraints) {
-                              final markerLeft = (constraints.maxWidth * progressRatio)
-                                  .clamp(18.0, constraints.maxWidth - 18.0);
+                              final markerLeft =
+                                  (constraints.maxWidth * progressRatio).clamp(
+                                    18.0,
+                                    constraints.maxWidth - 18.0,
+                                  );
                               return Stack(
                                 clipBehavior: Clip.none,
                                 children: [
@@ -1955,7 +2021,9 @@ class _BudgetProgressRow extends StatelessWidget {
                                           ),
                                           decoration: BoxDecoration(
                                             color: const Color(0xFF909090),
-                                            borderRadius: BorderRadius.circular(18),
+                                            borderRadius: BorderRadius.circular(
+                                              18,
+                                            ),
                                           ),
                                           child: const Text(
                                             '오늘',
@@ -1968,7 +2036,8 @@ class _BudgetProgressRow extends StatelessWidget {
                                         ),
                                         CustomPaint(
                                           size: const Size(12, 8),
-                                          painter: _BudgetMarkerTrianglePainter(),
+                                          painter:
+                                              _BudgetMarkerTrianglePainter(),
                                         ),
                                       ],
                                     ),
@@ -1998,7 +2067,9 @@ class _BudgetProgressRow extends StatelessWidget {
                           ? '초과 -${_compactDailyAmount(remaining.abs())}'
                           : _compactDailyAmount(remaining),
                       style: TextStyle(
-                        color: overBudget ? const Color(0xFFFF695D) : const Color(0xFF14171C),
+                        color: overBudget
+                            ? const Color(0xFFFF695D)
+                            : const Color(0xFF14171C),
                         fontSize: 13,
                         fontWeight: FontWeight.w800,
                       ),
@@ -2067,14 +2138,14 @@ class _LedgerDayHeader extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-                Text(
-                  DateFormat('d').format(date),
-                  style: TextStyle(
-                    color: dayNumberColor,
-                    fontSize: 26,
-                    fontWeight: FontWeight.w800,
-                  ),
+              Text(
+                DateFormat('d').format(date),
+                style: TextStyle(
+                  color: dayNumberColor,
+                  fontSize: 26,
+                  fontWeight: FontWeight.w800,
                 ),
+              ),
               const SizedBox(width: 6),
               Padding(
                 padding: const EdgeInsets.only(top: 4),
@@ -2090,63 +2161,67 @@ class _LedgerDayHeader extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 4),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 7,
-                          vertical: 3,
-                        ),
-                        decoration: BoxDecoration(
-                          color: weekdayBadgeColor,
-                          borderRadius: BorderRadius.circular(5),
-                        ),
-                        child: Text(
-                          DateFormat('EEEE', 'ko_KR').format(date),
-                          style: TextStyle(
-                            color: weekdayTextColor,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w800,
-                          ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: weekdayBadgeColor,
+                        borderRadius: BorderRadius.circular(5),
+                      ),
+                      child: Text(
+                        DateFormat('EEEE', 'ko_KR').format(date),
+                        style: TextStyle(
+                          color: weekdayTextColor,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
+                    ),
                   ],
                 ),
               ),
             ],
+          ),
+          const Spacer(),
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Row(
+              children: [
+                _LedgerDayMetric(
+                  label: '수입',
+                  value: income.round() == 0
+                      ? '0'
+                      : '+${_compactDailyAmount(income)}',
+                  color: const Color(0xFF56A0FF),
+                ),
+                const SizedBox(width: 14),
+                _LedgerDayMetric(
+                  label: '지출',
+                  value: expense.round() == 0
+                      ? '0'
+                      : '-${_compactDailyAmount(expense)}',
+                  color: const Color(0xFFFF695D),
+                ),
+                const SizedBox(width: 14),
+                _LedgerDayMetric(
+                  label: '남은금액',
+                  value: total.round() == 0
+                      ? '0'
+                      : total > 0
+                      ? '+${_compactDailyAmount(total)}'
+                      : '-${_compactDailyAmount(total.abs())}',
+                  color: total < 0
+                      ? const Color(0xFFFF695D)
+                      : const Color(0xFF56A0FF),
+                ),
+              ],
             ),
-            const Spacer(),
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Row(
-                children: [
-                  _LedgerDayMetric(
-                    label: '수입',
-                    value: income.round() == 0 ? '0' : '+${_compactDailyAmount(income)}',
-                    color: const Color(0xFF56A0FF),
-                  ),
-                  const SizedBox(width: 14),
-                  _LedgerDayMetric(
-                    label: '지출',
-                    value: expense.round() == 0 ? '0' : '-${_compactDailyAmount(expense)}',
-                    color: const Color(0xFFFF695D),
-                  ),
-                  const SizedBox(width: 14),
-                  _LedgerDayMetric(
-                    label: '남은금액',
-                    value: total.round() == 0
-                        ? '0'
-                        : total > 0
-                            ? '+${_compactDailyAmount(total)}'
-                            : '-${_compactDailyAmount(total.abs())}',
-                    color: total < 0
-                        ? const Color(0xFFFF695D)
-                        : const Color(0xFF56A0FF),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      );
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -2226,14 +2301,14 @@ class _LedgerDayMetric extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 2),
-          Text(
-            value,
-            style: TextStyle(
-              color: color,
-              fontSize: 13,
-              fontWeight: FontWeight.w800,
-            ),
+        Text(
+          value,
+          style: TextStyle(
+            color: color,
+            fontSize: 13,
+            fontWeight: FontWeight.w800,
           ),
+        ),
       ],
     );
   }
@@ -2264,7 +2339,9 @@ class _LedgerRowItemState extends State<_LedgerRowItem> {
         ? const Color(0xFFFF695D)
         : const Color(0xFF56A0FF);
     final cleanedNote = _cleanEntryDisplayNote(entry.note);
-    final detailLine = cleanedNote.isEmpty ? entry.title : cleanedNote.split('\n').first;
+    final detailLine = cleanedNote.isEmpty
+        ? entry.title
+        : cleanedNote.split('\n').first;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -2366,8 +2443,7 @@ String _cleanEntryDisplayNote(String rawNote) {
 }
 
 String _compactDailyAmount(double amount) {
-  final formatted = NumberFormat('#,###', 'ko_KR').format(amount.round());
-  return formatted;
+  return formatCompactCurrency(amount);
 }
 
 IconData _entryCategoryIcon(LedgerEntry entry) {

@@ -1,12 +1,16 @@
 package com.brosister.walletkeeper
 
+import android.content.Context
+
 data class NativeFinancialMessage(
     val title: String,
     val amountText: String,
 )
 
 object WalletKeeperNativeFinancialMessageParser {
-    private val amountPattern = Regex("""([0-9][0-9,]*)\s*원""")
+    private const val FLUTTER_PREFS_NAME = "FlutterSharedPreferences"
+    private const val CURRENCY_PREF_KEY = "flutter.wallet_keeper_currency_v1"
+
     private val requiredKeywords =
         listOf(
             "입금",
@@ -22,6 +26,7 @@ object WalletKeeperNativeFinancialMessageParser {
             "출금예정",
             "납부",
         )
+
     private val marketingKeywords =
         listOf(
             "이벤트",
@@ -34,16 +39,21 @@ object WalletKeeperNativeFinancialMessageParser {
             "상담",
             "혜택",
             "프로모션",
-            "재등록",
+            "등로",
         )
 
-    fun parse(body: String): NativeFinancialMessage? {
+    fun parse(context: Context, body: String): NativeFinancialMessage? {
+        val currency = currentCurrency(context)
+        val amountPattern = Regex(
+            """(?:${currencyRegex(currency)}\s*([0-9][0-9,]*)|([0-9][0-9,]*)\s*${currencyRegex(currency)})"""
+        )
         val normalized = body
             .replace('\n', ' ')
             .replace(Regex("""\s+"""), " ")
             .trim()
         val amountMatch = amountPattern.find(normalized) ?: return null
-        val amount = "${amountMatch.groupValues[1]}원"
+        val digits = amountMatch.groupValues[1].ifBlank { amountMatch.groupValues[2] }
+        val amount = formatAmountText(currency, digits)
         val lower = normalized.lowercase()
         if (marketingKeywords.any { lower.contains(it.lowercase()) }) {
             return null
@@ -52,8 +62,31 @@ object WalletKeeperNativeFinancialMessageParser {
             return null
         }
         return NativeFinancialMessage(
-            title = WalletKeeperNativeNotifierTitleResolver.resolveTitle(normalized),
+            title = WalletKeeperNativeNotifierTitleResolver.resolveTitle(normalized, currency),
             amountText = amount,
         )
     }
+
+    private fun currentCurrency(context: Context): String {
+        return context
+            .getSharedPreferences(FLUTTER_PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(CURRENCY_PREF_KEY, "krw")
+            ?: "krw"
+    }
+
+    private fun currencyRegex(currency: String): String =
+        when (currency) {
+            "usd" -> """(?:USD|US\$|\$|달러)"""
+            "jpy" -> """(?:JPY|¥|엔)"""
+            "cny" -> """(?:CNY|CN¥|¥|위안|元|人民币)"""
+            else -> """(?:원|KRW|₩)"""
+        }
+
+    private fun formatAmountText(currency: String, digits: String): String =
+        when (currency) {
+            "usd" -> "\$$digits"
+            "jpy" -> "¥$digits"
+            "cny" -> "CN¥$digits"
+            else -> "${digits}원"
+        }
 }
