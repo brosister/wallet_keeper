@@ -65,6 +65,8 @@ const _walletKeeperInstallIdKey = 'wallet_keeper_install_id_v1';
 const _walletKeeperSessionKey = 'wallet_keeper_session_v1';
 const _walletKeeperGuestSerialKey = 'wallet_keeper_guest_serial_v1';
 const _smsNotificationChannelId = 'wallet_keeper_sms_channel';
+const _adminPushNotificationChannelId = 'wallet_keeper_admin_push_channel';
+const _adminPushNotificationChannelName = 'Wallet Keeper Admin Push';
 const _smsNotificationChannelName = '지갑지켜 문자 알림';
 const _walletKeeperSmsParserVersion = '2026.05.07-r1';
 const _walletKeeperKakaoNativeKey = 'e0888b88d12ae3a234b022db1d2c723e';
@@ -173,6 +175,15 @@ Future<void> _initializeLocalNotifications() async {
       _smsNotificationChannelName,
       description: '금융 문자 감지 알림',
       importance: Importance.high,
+    ),
+  );
+  await androidPlugin?.createNotificationChannel(
+    const AndroidNotificationChannel(
+      _adminPushNotificationChannelId,
+      _adminPushNotificationChannelName,
+      description: 'Admin push notifications without launcher badge counts.',
+      importance: Importance.high,
+      showBadge: false,
     ),
   );
 }

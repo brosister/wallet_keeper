@@ -1280,6 +1280,19 @@ class WalletKeeperNotificationService {
       payload: _smsInboxNotificationPayload,
     );
   }
+
+  static Future<void> clearFinancialNotifications() async {
+    if (Platform.isAndroid) {
+      try {
+        await _nativeNotificationChannel.invokeMethod(
+          'cancelFinancialNotifications',
+        );
+      } catch (_) {}
+    }
+    try {
+      await _localNotifications.cancelAll();
+    } catch (_) {}
+  }
 }
 
 class WalletKeeperSmsParser {

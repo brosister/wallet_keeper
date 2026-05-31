@@ -101,6 +101,14 @@ class MainActivity : FlutterActivity() {
                         result.error("native_notification_failed", error.message, null)
                     }
                 }
+                "cancelFinancialNotifications" -> {
+                    try {
+                        WalletKeeperNativeNotifier.cancelFinancialNotifications(this)
+                        result.success(true)
+                    } catch (error: Exception) {
+                        result.error("native_notification_cancel_failed", error.message, null)
+                    }
+                }
                 else -> result.notImplemented()
             }
         }

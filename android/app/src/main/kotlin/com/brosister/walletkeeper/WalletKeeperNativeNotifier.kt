@@ -62,6 +62,10 @@ object WalletKeeperNativeNotifier {
         NotificationManagerCompat.from(context).notify(notificationId, notification)
     }
 
+    fun cancelFinancialNotifications(context: Context) {
+        NotificationManagerCompat.from(context).cancelAll()
+    }
+
     private fun ensureChannel(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val manager =

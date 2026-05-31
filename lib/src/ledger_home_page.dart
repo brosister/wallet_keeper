@@ -905,6 +905,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
 
   void _openSmsPage() {
     if (!Platform.isAndroid) {
+      unawaited(WalletKeeperNotificationService.clearFinancialNotifications());
       _consumePendingRealtimeMessages();
       setState(() => _routeStack.add(const _ShellRoute.smsInbox()));
       return;
@@ -913,6 +914,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
       widget.onRequireFeatureOnboarding();
       return;
     }
+    unawaited(WalletKeeperNotificationService.clearFinancialNotifications());
     _consumePendingRealtimeMessages();
     setState(() => _routeStack.add(const _ShellRoute.smsInbox()));
   }
@@ -924,6 +926,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
       widget.onRequireFeatureOnboarding();
       return;
     }
+    await WalletKeeperNotificationService.clearFinancialNotifications();
     await _consumePendingRealtimeMessages();
     if (!mounted) return;
     setState(() {
