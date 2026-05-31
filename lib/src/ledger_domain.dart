@@ -3188,10 +3188,10 @@ class WalletKeeperPushRepository {
     final messaging = FirebaseMessaging.instance;
 
     if (Platform.isIOS) {
-      await messaging.requestPermission(alert: true, badge: true, sound: true);
+      await messaging.requestPermission(alert: true, badge: false, sound: true);
       await messaging.setForegroundNotificationPresentationOptions(
         alert: true,
-        badge: true,
+        badge: false,
         sound: true,
       );
     } else if (Platform.isAndroid) {
