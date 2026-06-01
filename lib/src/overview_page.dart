@@ -2443,7 +2443,7 @@ String _cleanEntryDisplayNote(String rawNote) {
 }
 
 String _compactDailyAmount(double amount) {
-  return formatCompactCurrency(amount);
+  return NumberFormat.decimalPattern('ko_KR').format(amount.abs().round());
 }
 
 IconData _entryCategoryIcon(LedgerEntry entry) {

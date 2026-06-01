@@ -4246,7 +4246,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         context,
                         WalletKeeperTextKey.inquiry,
                       ),
-                      subtitle: '? ?? ??? ? ?? ??',
+                      subtitle: '내 문의 내역과 새 문의 작성',
                       onTap: widget.onOpenInquiryList,
                     ),
                     _SettingsMenuTile(
@@ -4255,7 +4255,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         context,
                         WalletKeeperTextKey.terms,
                       ),
-                      subtitle: '????? ???????? ??',
+                      subtitle: '이용약관과 개인정보처리방침 보기',
                       onTap: widget.onOpenTermsInfo,
                     ),
                   ],
