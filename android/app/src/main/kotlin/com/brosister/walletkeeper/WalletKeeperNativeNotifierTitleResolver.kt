@@ -12,7 +12,7 @@ object WalletKeeperNativeNotifierTitleResolver {
             .replace(Regex("""^\d{1,2}/\d{1,2}\s+\d{1,2}:\d{2}\s*"""), "")
             .replace("/", " ")
             .trim()
-        return if (stripped.isBlank()) "지갑지기" else stripped
+        return if (stripped.isBlank()) "지갑지켜" else stripped
     }
 
     fun resolveAmount(body: String, currency: String): String {
