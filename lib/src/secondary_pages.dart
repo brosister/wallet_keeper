@@ -2647,6 +2647,7 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
     _categoryController = TextEditingController();
     _noteController = TextEditingController();
     _categoryFocusNode = FocusNode();
+    _categoryFocusNode.addListener(_handleCategoryFocusChanged);
     _applySource();
   }
 
@@ -2708,6 +2709,47 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
     _categoryEditedByUser = editedByUser;
   }
 
+  void _handleCategoryFocusChanged() {
+    if (!mounted) return;
+    setState(() {});
+    if (!_categoryFocusNode.hasFocus) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_categoryFocusNode.hasFocus) return;
+      _refreshCategoryAutocompleteLayout();
+    });
+  }
+
+  void _handleCategoryFieldTap() {
+    if (!mounted) return;
+    setState(() {});
+    _refreshCategoryAutocompleteLayout();
+  }
+
+  void _refreshCategoryAutocompleteLayout({int remainingPasses = 2}) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_categoryFocusNode.hasFocus) return;
+      final fieldContext = _categoryFieldKey.currentContext;
+      if (fieldContext != null) {
+        unawaited(
+          Scrollable.ensureVisible(
+            fieldContext,
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            alignment: 0.18,
+            alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+          ),
+        );
+      }
+      if (remainingPasses > 0) {
+        _refreshCategoryAutocompleteLayout(
+          remainingPasses: remainingPasses - 1,
+        );
+      } else if (mounted && _categoryFocusNode.hasFocus) {
+        setState(() {});
+      }
+    });
+  }
+
   void _handleModeChanged(_EntryEditorMode mode) {
     if (_mode == mode) return;
     final shouldAutoReplaceCategory = _fromSmsDraft && !_categoryEditedByUser;
@@ -2731,6 +2773,7 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
     _amountController.dispose();
     _categoryController.dispose();
     _noteController.dispose();
+    _categoryFocusNode.removeListener(_handleCategoryFocusChanged);
     _categoryFocusNode.dispose();
     super.dispose();
   }
@@ -3196,6 +3239,7 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
                                   key: _categoryFieldKey,
                                   controller: controller,
                                   focusNode: focusNode,
+                                  onTap: _handleCategoryFieldTap,
                                   onChanged: (_) {
                                     if (_applyingCategoryText) return;
                                     _categoryEditedByUser = true;
@@ -3223,6 +3267,11 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
                           if (list.isEmpty) {
                             return const SizedBox.shrink();
                           }
+                          final optionsLayout =
+                              _resolveAutocompletePanelLayout(
+                                context,
+                                _categoryFieldKey,
+                              );
                           return Align(
                             alignment: Alignment.topLeft,
                             child: TapRegion(
@@ -3234,7 +3283,7 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
                                 child: Container(
                                   width: 220,
                                   constraints: BoxConstraints(
-                                    maxHeight: autocompleteLayout.maxHeight,
+                                    maxHeight: optionsLayout.maxHeight,
                                   ),
                                   decoration: BoxDecoration(
                                     color: Colors.white,
