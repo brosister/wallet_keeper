@@ -2214,6 +2214,8 @@ class LedgerEntry {
   final DateTime createdAt;
   final int? fixedDay;
 
+  bool get isFixedEntry => fixedDay != null;
+  bool get isFixedIncome => type == EntryType.income && fixedDay != null;
   bool get isFixedExpense => type == EntryType.expense && fixedDay != null;
 
   LedgerEntry copyWith({
@@ -2270,6 +2272,11 @@ class LedgerEntry {
     createdAt: DateTime.parse(json['createdAt'] as String),
     fixedDay: (json['fixedDay'] as num?)?.toInt(),
   );
+}
+
+String walletKeeperFixedEntryLabel(LedgerEntry entry) {
+  if (!entry.isFixedEntry) return entry.category;
+  return entry.type == EntryType.income ? '고정수입' : '고정비';
 }
 
 int walletKeeperLastDayOfMonth(int year, int month) =>

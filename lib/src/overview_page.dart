@@ -107,8 +107,9 @@ class _OverviewPageState extends State<OverviewPage> {
   }
 
   Future<void> _animateToMonthPage(int pageIndex) async {
-    if (!_monthPageController.hasClients || pageIndex == _currentMonthPage)
+    if (!_monthPageController.hasClients || pageIndex == _currentMonthPage) {
       return;
+    }
     await _monthPageController.animateToPage(
       pageIndex,
       duration: const Duration(milliseconds: 240),
@@ -117,8 +118,9 @@ class _OverviewPageState extends State<OverviewPage> {
   }
 
   Future<void> _animateToYearPage(int pageIndex) async {
-    if (!_yearPageController.hasClients || pageIndex == _currentYearPage)
+    if (!_yearPageController.hasClients || pageIndex == _currentYearPage) {
       return;
+    }
     await _yearPageController.animateToPage(
       pageIndex,
       duration: const Duration(milliseconds: 240),
@@ -157,12 +159,12 @@ class _OverviewPageState extends State<OverviewPage> {
   List<LedgerEntry> _entriesForMonth(DateTime month) {
     return widget.entries
         .where((entry) {
-          if (entry.isFixedExpense) return true;
+          if (entry.isFixedEntry) return true;
           return entry.date.year == month.year &&
               entry.date.month == month.month;
         })
         .map(
-          (entry) => entry.isFixedExpense
+          (entry) => entry.isFixedEntry
               ? walletKeeperMaterializeFixedEntryForMonth(entry, month)
               : entry,
         )
@@ -1435,8 +1437,8 @@ class _CalendarSelectedDayRowState extends State<_CalendarSelectedDayRow> {
 }
 
 String _buildCalendarDetailLine(LedgerEntry entry) {
-  if (entry.isFixedExpense) {
-    return '고정비 | 매월 ${entry.fixedDay}일';
+  if (entry.isFixedEntry) {
+    return '${walletKeeperFixedEntryLabel(entry)} | 매월 ${entry.fixedDay}일';
   }
   final cleanedNote = _cleanEntryDisplayNote(entry.note);
   final primary = entry.title.trim();
@@ -1448,8 +1450,10 @@ String _buildCalendarDetailLine(LedgerEntry entry) {
 }
 
 Color _calendarEntryAccent(LedgerEntry entry) {
-  if (entry.isFixedExpense) {
-    return const Color(0xFFE76158);
+  if (entry.isFixedEntry) {
+    return entry.type == EntryType.income
+        ? const Color(0xFF4B8EFF)
+        : const Color(0xFFE76158);
   }
   final category = entry.category.toLowerCase();
   if (category.contains('식') ||
@@ -2447,7 +2451,7 @@ String _compactDailyAmount(double amount) {
 }
 
 IconData _entryCategoryIcon(LedgerEntry entry) {
-  if (entry.isFixedExpense) {
+  if (entry.isFixedEntry) {
     return Icons.event_repeat_rounded;
   }
   return _walletKeeperCategoryDisplayIcon(

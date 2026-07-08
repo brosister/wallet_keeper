@@ -494,12 +494,12 @@ class _LedgerHomePageState extends State<LedgerHomePage>
   List<LedgerEntry> _entriesForMonth(DateTime month) {
     return _entries
         .where((entry) {
-          if (entry.isFixedExpense) return true;
+          if (entry.isFixedEntry) return true;
           return entry.date.year == month.year &&
               entry.date.month == month.month;
         })
         .map(
-          (entry) => entry.isFixedExpense
+          (entry) => entry.isFixedEntry
               ? walletKeeperMaterializeFixedEntryForMonth(entry, month)
               : entry,
         )

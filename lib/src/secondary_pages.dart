@@ -7,6 +7,7 @@ const List<String> _walletKeeperDefaultCategorySuggestions = <String>[
   '교통/차량',
   '쇼핑',
   '고정비',
+  '고정수입',
   '카드값',
   '통신',
   '보험',
@@ -2597,6 +2598,15 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
   bool _categoryEditedByUser = false;
   bool _applyingCategoryText = false;
 
+  bool get _isFixedMode => _mode == _EntryEditorMode.fixedExpense;
+
+  EntryType get _resolvedEntryType {
+    if (_mode == _EntryEditorMode.fixedExpense) {
+      return _type == EntryType.income ? EntryType.income : EntryType.expense;
+    }
+    return _mode.entryType;
+  }
+
   bool get hasUnsavedChanges {
     if (_saving) return false;
     final source = widget.existing;
@@ -2619,7 +2629,7 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
     final sourceType = rawSourceType == EntryType.income
         ? EntryType.income
         : EntryType.expense;
-    final sourceMode = source?.isFixedExpense == true
+    final sourceMode = source?.isFixedEntry == true
         ? _EntryEditorMode.fixedExpense
         : sourceType == EntryType.income
         ? _EntryEditorMode.income
@@ -2631,6 +2641,7 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
         _amountController.text.trim() != sourceAmount.trim() ||
         _categoryController.text.trim() != sourceCategory.trim() ||
         _noteController.text.trim() != sourceNote.trim() ||
+        _resolvedEntryType != sourceType ||
         _mode != sourceMode ||
         _fixedDay != sourceFixedDay ||
         !_isSameMinute(_date, sourceDate) ||
@@ -2694,7 +2705,7 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
         ? EntryType.income
         : EntryType.expense;
     _fixedDay = existing?.fixedDay;
-    _mode = existing?.isFixedExpense == true
+    _mode = existing?.isFixedEntry == true
         ? _EntryEditorMode.fixedExpense
         : _type == EntryType.income
         ? _EntryEditorMode.income
@@ -2755,16 +2766,39 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
     final shouldAutoReplaceCategory = _fromSmsDraft && !_categoryEditedByUser;
     setState(() {
       _mode = mode;
-      _type = mode.entryType;
       if (mode == _EntryEditorMode.fixedExpense) {
+        if (_type == EntryType.transfer) {
+          _type = EntryType.expense;
+        }
         _fixedDay ??= _date.day.clamp(1, 31);
+      } else if (mode == _EntryEditorMode.income) {
+        _type = EntryType.income;
       } else {
+        _type = EntryType.expense;
         _fixedDay = null;
       }
       if (shouldAutoReplaceCategory) {
-        _setCategoryText(mode.label(context));
+        _setCategoryText(_categoryForSelection(mode, _type));
       }
     });
+  }
+
+  void _handleFixedTypeChanged(EntryType type) {
+    if (!_isFixedMode || _type == type) return;
+    final shouldAutoReplaceCategory = _fromSmsDraft && !_categoryEditedByUser;
+    setState(() {
+      _type = type;
+      if (shouldAutoReplaceCategory) {
+        _setCategoryText(_categoryForSelection(_mode, type));
+      }
+    });
+  }
+
+  String _categoryForSelection(_EntryEditorMode mode, EntryType type) {
+    if (mode == _EntryEditorMode.fixedExpense) {
+      return type == EntryType.income ? '고정수입' : '고정비';
+    }
+    return mode.label(context);
   }
 
   @override
@@ -2840,7 +2874,7 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
   }
 
   Future<void> _pickDateTime() async {
-    if (_mode == _EntryEditorMode.fixedExpense) {
+    if (_isFixedMode) {
       await _pickFixedDay();
       return;
     }
@@ -2971,7 +3005,7 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
     }
     setState(() => _saving = true);
     final existing = widget.existing;
-    final fixedDay = _mode == _EntryEditorMode.fixedExpense
+    final fixedDay = _isFixedMode
         ? (_fixedDay ?? _date.day.clamp(1, 31))
         : null;
     final saveDate = fixedDay == null
@@ -2992,7 +3026,7 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
       category: _categoryController.text.trim(),
       note: _noteController.text.trim(),
       attachmentPaths: List<String>.from(_attachmentPaths),
-      type: _mode.entryType,
+      type: _resolvedEntryType,
       date: saveDate,
       createdAt: existing?.createdAt ?? DateTime.now(),
       fixedDay: fixedDay,
@@ -3076,6 +3110,44 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
     _EntryEditorMode.income,
   ];
 
+  Color _fixedTypeColor(EntryType type) {
+    return type == EntryType.income
+        ? const Color(0xFF2F6BFF)
+        : const Color(0xFFE76158);
+  }
+
+  Widget _buildFixedTypeChip(EntryType type) {
+    final selected = _type == type;
+    final color = _fixedTypeColor(type);
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => _handleFixedTypeChanged(type),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          height: 42,
+          decoration: BoxDecoration(
+            color: selected ? color : Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: selected ? color : const Color(0xFFDDE3EA),
+              width: selected ? 1.4 : 1.2,
+            ),
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            type.label(context),
+            style: TextStyle(
+              color: selected ? Colors.white : const Color(0xFF5F6671),
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final bottomInset = bottomOverlayHeightOf(context);
@@ -3135,9 +3207,22 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
                     );
                   }).toList(),
                 ),
+                if (_isFixedMode) ...[
+                  const SizedBox(height: 12),
+                  _EditorRow(
+                    label: '구분',
+                    child: Row(
+                      children: [
+                        _buildFixedTypeChip(EntryType.expense),
+                        const SizedBox(width: 10),
+                        _buildFixedTypeChip(EntryType.income),
+                      ],
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 16),
                 _EditorRow(
-                  label: _mode == _EntryEditorMode.fixedExpense ? '반복일' : '날짜',
+                  label: _isFixedMode ? '반복일' : '날짜',
                   child: InkWell(
                     onTap: _pickDateTime,
                     child: Container(
@@ -3150,7 +3235,7 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
                       child: Row(
                         children: [
                           Text(
-                            _mode == _EntryEditorMode.fixedExpense
+                            _isFixedMode
                                 ? '매월 ${_fixedDay ?? _date.day}일'
                                 : DateFormat(
                                     'yy/M/d (E)  a h:mm',
@@ -4977,12 +5062,12 @@ class AssetPage extends StatelessWidget {
         entries
             .where(
               (entry) =>
-                  entry.isFixedExpense ||
+                  entry.isFixedEntry ||
                   (entry.date.year == now.year &&
                       entry.date.month == now.month),
             )
             .map(
-              (entry) => entry.isFixedExpense
+              (entry) => entry.isFixedEntry
                   ? walletKeeperMaterializeFixedEntryForMonth(entry, now)
                   : entry,
             )
@@ -5332,7 +5417,7 @@ List<LedgerEntry> _statsEntriesForRange(
   final endMonth = DateTime(end.year, end.month);
 
   for (final entry in entries) {
-    if (!entry.isFixedExpense) {
+    if (!entry.isFixedEntry) {
       if (!entry.date.isBefore(start) && !entry.date.isAfter(end)) {
         result.add(entry);
       }
@@ -7698,7 +7783,7 @@ class _UpcomingExpenseRow extends StatelessWidget {
             borderRadius: BorderRadius.circular(14),
           ),
           child: Icon(
-            entry.isFixedExpense
+            entry.isFixedEntry
                 ? Icons.event_repeat_rounded
                 : _assetIconForCategory(entry.category),
             size: 19,
@@ -7722,8 +7807,8 @@ class _UpcomingExpenseRow extends StatelessWidget {
               ),
               const SizedBox(height: 3),
               Text(
-                entry.isFixedExpense
-                    ? '${DateFormat('M.d').format(entry.date)} · 고정비 · 매월 ${entry.fixedDay}일'
+                entry.isFixedEntry
+                    ? '${DateFormat('M.d').format(entry.date)} · ${walletKeeperFixedEntryLabel(entry)} · 매월 ${entry.fixedDay}일'
                     : '${DateFormat('M.d').format(entry.date)} · ${entry.category}',
                 style: const TextStyle(
                   color: Color(0xFF8D97A5),
@@ -7847,7 +7932,7 @@ class _RecentAssetFlowRow extends StatelessWidget {
           height: 40,
           decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
           child: Icon(
-            entry.isFixedExpense
+            entry.isFixedEntry
                 ? Icons.event_repeat_rounded
                 : _assetIconForCategory(entry.category),
             size: 19,
@@ -7871,8 +7956,8 @@ class _RecentAssetFlowRow extends StatelessWidget {
               ),
               const SizedBox(height: 3),
               Text(
-                entry.isFixedExpense
-                    ? '${DateFormat('M.d').format(entry.date)} · 고정비 · 매월 ${entry.fixedDay}일'
+                entry.isFixedEntry
+                    ? '${DateFormat('M.d').format(entry.date)} · ${walletKeeperFixedEntryLabel(entry)} · 매월 ${entry.fixedDay}일'
                     : '${DateFormat('M.d HH:mm').format(entry.date)} · ${entry.category}',
                 style: const TextStyle(
                   color: Color(0xFF8D97A5),
@@ -7903,7 +7988,11 @@ class _RecentAssetFlowRow extends StatelessWidget {
 }
 
 Color _assetAccentForEntry(LedgerEntry entry) {
-  if (entry.isFixedExpense) return const Color(0xFFE76158);
+  if (entry.isFixedEntry) {
+    return entry.type == EntryType.income
+        ? const Color(0xFF2F6BFF)
+        : const Color(0xFFE76158);
+  }
   return _assetAccentForCategory(entry.category, entry.type);
 }
 
