@@ -172,10 +172,38 @@ class PlaceholderTabPage extends StatelessWidget {
   }
 }
 
+int walletKeeperInitialStatsKind(
+  List<LedgerEntry> entries, {
+  DateTime? referenceDate,
+}) {
+  final date = referenceDate ?? DateTime.now();
+  final start = DateTime(date.year, date.month);
+  final end = DateTime(date.year, date.month + 1, 0, 23, 59, 59);
+  final periodEntries = _statsEntriesForRange(
+    entries,
+    start: start,
+    end: end,
+  );
+  final hasIncome = periodEntries.any(
+    (entry) => entry.type == EntryType.income && entry.amount.abs() > 0,
+  );
+  final hasExpense = periodEntries.any(
+    (entry) => entry.type == EntryType.expense && entry.amount.abs() > 0,
+  );
+  return hasIncome && !hasExpense ? 0 : 1;
+}
+
 class StatsPage extends StatefulWidget {
-  const StatsPage({super.key, required this.entries});
+  const StatsPage({
+    super.key,
+    required this.entries,
+    this.selectedKind,
+    this.onSelectedKindChanged,
+  });
 
   final List<LedgerEntry> entries;
+  final int? selectedKind;
+  final ValueChanged<int>? onSelectedKindChanged;
 
   @override
   State<StatsPage> createState() => _StatsPageState();
@@ -190,7 +218,8 @@ class _StatsPageState extends State<StatsPage> {
   late DateTime _customStart;
   late DateTime _customEnd;
   _StatsRangeMode _rangeMode = _StatsRangeMode.monthly;
-  int _selectedKind = 1;
+  late int _selectedKind;
+  late bool _hasExplicitKindSelection;
   int? _selectedCategoryIndex;
   final List<GlobalKey> _categoryRowKeys = <GlobalKey>[];
 
@@ -203,6 +232,34 @@ class _StatsPageState extends State<StatsPage> {
     _selectedYear = now.year;
     _customStart = DateTime(now.year, 1, 1);
     _customEnd = DateTime(now.year, now.month, now.day);
+    _hasExplicitKindSelection = widget.selectedKind != null;
+    _selectedKind =
+        widget.selectedKind ??
+        walletKeeperInitialStatsKind(
+          widget.entries,
+          referenceDate: now,
+        );
+  }
+
+  @override
+  void didUpdateWidget(covariant StatsPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final selectedKind = widget.selectedKind;
+    if (selectedKind != null) {
+      _hasExplicitKindSelection = true;
+      if (_selectedKind != selectedKind) {
+        _selectedKind = selectedKind;
+        _selectedCategoryIndex = 0;
+      }
+      return;
+    }
+    if (!_hasExplicitKindSelection && oldWidget.entries != widget.entries) {
+      final nextKind = walletKeeperInitialStatsKind(widget.entries);
+      if (_selectedKind != nextKind) {
+        _selectedKind = nextKind;
+        _selectedCategoryIndex = 0;
+      }
+    }
   }
 
   void _movePeriod(int offset) {
@@ -417,6 +474,8 @@ class _StatsPageState extends State<StatsPage> {
   }
 
   void _selectKind(int kind) {
+    _hasExplicitKindSelection = true;
+    widget.onSelectedKindChanged?.call(kind);
     if (_selectedKind == kind) return;
     setState(() {
       _selectedKind = kind;
@@ -2532,8 +2591,10 @@ class EntryEditorPage extends StatefulWidget {
     this.existing,
     this.smsDraft,
     required this.categorySuggestions,
+    required this.assets,
     required this.featureAccess,
     required this.onRequestSmsAccess,
+    required this.onCreateAsset,
     required this.onSave,
     required this.onCancel,
     this.onDeleteDraft,
@@ -2543,8 +2604,13 @@ class EntryEditorPage extends StatefulWidget {
   final LedgerEntry? existing;
   final WalletKeeperSmsDraft? smsDraft;
   final List<String> categorySuggestions;
+  final List<WalletKeeperAsset> assets;
   final WalletKeeperFeatureAccess featureAccess;
   final Future<void> Function() onRequestSmsAccess;
+  final Future<WalletKeeperAsset?> Function(
+    WalletKeeperAssetSuggestion? suggestion,
+  )
+  onCreateAsset;
   final Future<void> Function(LedgerEntry entry) onSave;
   final Future<void> Function() onCancel;
   final Future<void> Function()? onDeleteDraft;
@@ -2597,6 +2663,7 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
   bool _saving = false;
   bool _categoryEditedByUser = false;
   bool _applyingCategoryText = false;
+  String? _assetId;
 
   bool get _isFixedMode => _mode == _EntryEditorMode.fixedExpense;
 
@@ -2617,7 +2684,8 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
           _categoryController.text.trim().isNotEmpty ||
           _noteController.text.trim().isNotEmpty ||
           _mode != _EntryEditorMode.expense ||
-          _attachmentPaths.isNotEmpty;
+          _attachmentPaths.isNotEmpty ||
+          _assetId != null;
     }
     final sourceTitle = source?.title ?? draft?.title ?? '';
     final sourceAmount = _formatAmountForEditing(
@@ -2637,6 +2705,7 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
     final sourceDate = source?.date ?? draft?.date;
     final sourceFixedDay = source?.fixedDay;
     final sourceAttachments = source?.attachmentPaths ?? const <String>[];
+    final sourceAssetId = source?.assetId;
     return _titleController.text.trim() != sourceTitle.trim() ||
         _amountController.text.trim() != sourceAmount.trim() ||
         _categoryController.text.trim() != sourceCategory.trim() ||
@@ -2644,6 +2713,7 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
         _resolvedEntryType != sourceType ||
         _mode != sourceMode ||
         _fixedDay != sourceFixedDay ||
+        _assetId != sourceAssetId ||
         !_isSameMinute(_date, sourceDate) ||
         !_isSamePathList(_attachmentPaths, sourceAttachments);
   }
@@ -2693,6 +2763,8 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
           : _EntryEditorMode.expense;
       _fixedDay = null;
       _date = draft.date;
+      _attachmentPaths = const [];
+      _assetId = detectWalletKeeperAsset(draft, widget.assets)?.id;
       return;
     }
     _titleController.text = existing?.title ?? '';
@@ -2705,6 +2777,7 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
         ? EntryType.income
         : EntryType.expense;
     _fixedDay = existing?.fixedDay;
+    _assetId = existing?.assetId;
     _mode = existing?.isFixedEntry == true
         ? _EntryEditorMode.fixedExpense
         : _type == EntryType.income
@@ -2721,9 +2794,7 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
   }
 
   void _handleCategoryFocusChanged() {
-    if (!mounted) return;
-    setState(() {});
-    if (!_categoryFocusNode.hasFocus) return;
+    if (!mounted || !_categoryFocusNode.hasFocus) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_categoryFocusNode.hasFocus) return;
       _refreshCategoryAutocompleteLayout();
@@ -2731,8 +2802,7 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
   }
 
   void _handleCategoryFieldTap() {
-    if (!mounted) return;
-    setState(() {});
+    if (!mounted || !_categoryFocusNode.hasFocus) return;
     _refreshCategoryAutocompleteLayout();
   }
 
@@ -2740,29 +2810,33 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_categoryFocusNode.hasFocus) return;
       final fieldContext = _categoryFieldKey.currentContext;
-      if (fieldContext != null) {
-        unawaited(
-          Scrollable.ensureVisible(
-            fieldContext,
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOutCubic,
-            alignment: 0.18,
-            alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
-          ),
-        );
+      final renderBox = _activeRenderBoxOf(fieldContext);
+      if (fieldContext != null && renderBox != null) {
+        try {
+          unawaited(
+            Scrollable.ensureVisible(
+              fieldContext,
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOutCubic,
+              alignment: 0.18,
+              alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+            ).catchError((_) {}),
+          );
+        } on FlutterError {
+          // The field can be reparented while the editor mode is changing.
+        }
       }
       if (remainingPasses > 0) {
         _refreshCategoryAutocompleteLayout(
           remainingPasses: remainingPasses - 1,
         );
-      } else if (mounted && _categoryFocusNode.hasFocus) {
-        setState(() {});
       }
     });
   }
 
   void _handleModeChanged(_EntryEditorMode mode) {
     if (_mode == mode) return;
+    _categoryFocusNode.unfocus();
     final shouldAutoReplaceCategory = _fromSmsDraft && !_categoryEditedByUser;
     setState(() {
       _mode = mode;
@@ -2817,6 +2891,41 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
       widget.categorySuggestions,
       current: _categoryController.text.trim(),
     );
+  }
+
+  WalletKeeperAsset? get _selectedAsset {
+    final id = _assetId;
+    if (id == null) return null;
+    for (final asset in widget.assets) {
+      if (asset.id == id) return asset;
+    }
+    return null;
+  }
+
+  WalletKeeperAssetSuggestion? get _detectedAssetSuggestion =>
+      inferWalletKeeperAssetSuggestion(widget.smsDraft);
+
+  Future<void> _selectLinkedAsset() async {
+    FocusScope.of(context).unfocus();
+    final selection = await showWalletKeeperAssetSelectorSheet(
+      context,
+      assets: widget.assets,
+      entries: const [],
+      selectedAssetId: _assetId,
+      suggestion: _detectedAssetSuggestion,
+    );
+    if (selection == null || !mounted) return;
+    if (selection == _assetSelectorNone) {
+      setState(() => _assetId = null);
+      return;
+    }
+    if (selection == _assetSelectorCreate) {
+      final created = await widget.onCreateAsset(_detectedAssetSuggestion);
+      if (created == null || !mounted) return;
+      setState(() => _assetId = created.id);
+      return;
+    }
+    setState(() => _assetId = selection);
   }
 
   Future<bool> confirmDiscardIfNeeded() async {
@@ -3030,6 +3139,7 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
       date: saveDate,
       createdAt: existing?.createdAt ?? DateTime.now(),
       fixedDay: fixedDay,
+      assetId: _assetId,
     );
     await widget.onSave(entry);
     if (!mounted) return;
@@ -3148,6 +3258,115 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
     );
   }
 
+  Widget _buildLinkedAssetRow() {
+    final selected = _selectedAsset;
+    final suggestion = _detectedAssetSuggestion;
+    final hasDetectedSuggestion = selected == null && suggestion != null;
+    return _EditorRow(
+      label: '연결 자산',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: _selectLinkedAsset,
+          borderRadius: BorderRadius.circular(14),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
+            decoration: BoxDecoration(
+              color: hasDetectedSuggestion
+                  ? const Color(0xFFFFF3EF)
+                  : const Color(0xFFF7F8FA),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: hasDetectedSuggestion
+                    ? const Color(0xFFFFC9C3)
+                    : const Color(0xFFE8ECF1),
+              ),
+            ),
+            child: Row(
+              children: [
+                if (selected != null)
+                  WalletKeeperAssetIcon(
+                    type: selected.type,
+                    brandKey: selected.brandKey,
+                    iconBase64: selected.iconBase64,
+                    size: 34,
+                  )
+                else if (suggestion != null)
+                  WalletKeeperAssetIcon(
+                    type: suggestion.type,
+                    brandKey: suggestion.brandKey,
+                    iconBase64: suggestion.iconBase64,
+                    size: 34,
+                  )
+                else
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFECEF3F),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.account_balance_wallet_outlined,
+                      size: 18,
+                      color: Color(0xFF8D96A2),
+                    ),
+                  ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        selected?.name ??
+                            (suggestion == null
+                                ? '자산을 선택해주세요'
+                                : '${suggestion.institution} 감지됨'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: selected != null || suggestion != null
+                              ? const Color(0xFF282D34)
+                              : const Color(0xFF9AA2AD),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      if (selected != null || suggestion != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          selected != null
+                              ? '${selected.type.label} · 저장 시 금액 자동 반영'
+                              : '등록된 자산이 없으면 바로 추가할 수 있어요',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Color(0xFF929BA7),
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                Icon(
+                  selected == null && suggestion != null
+                      ? Icons.add_circle_rounded
+                      : Icons.chevron_right_rounded,
+                  size: 21,
+                  color: selected == null && suggestion != null
+                      ? const Color(0xFFFF695D)
+                      : const Color(0xFFABB3BD),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final bottomInset = bottomOverlayHeightOf(context);
@@ -3258,6 +3477,8 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
                     ),
                   ),
                 ),
+                const SizedBox(height: 12),
+                _buildLinkedAssetRow(),
                 const SizedBox(height: 12),
                 _EditorRow(
                   label: '금액',
@@ -5043,64 +5264,63 @@ class AssetPage extends StatelessWidget {
   const AssetPage({
     super.key,
     required this.entries,
+    required this.assets,
     required this.session,
+    required this.onAddAsset,
+    required this.onEditAsset,
+    required this.onConnectUnlinkedEntries,
     required this.onOpenUpcomingExpenses,
-    required this.onOpenFlowHistory,
+    required this.onOpenAllAssetHistory,
+    required this.onOpenAssetHistory,
   });
 
   final List<LedgerEntry> entries;
+  final List<WalletKeeperAsset> assets;
   final WalletKeeperUserSession? session;
+  final VoidCallback onAddAsset;
+  final ValueChanged<WalletKeeperAsset> onEditAsset;
+  final VoidCallback onConnectUnlinkedEntries;
   final VoidCallback onOpenUpcomingExpenses;
-  final VoidCallback onOpenFlowHistory;
+  final VoidCallback onOpenAllAssetHistory;
+  final ValueChanged<WalletKeeperAsset> onOpenAssetHistory;
 
   @override
   Widget build(BuildContext context) {
     final bottomInset = bottomOverlayHeightOf(context);
     final now = DateTime.now();
     final startOfToday = DateTime(now.year, now.month, now.day);
-    final materializedThisMonthEntries =
-        entries
-            .where(
-              (entry) =>
-                  entry.isFixedEntry ||
-                  (entry.date.year == now.year &&
-                      entry.date.month == now.month),
-            )
-            .map(
-              (entry) => entry.isFixedEntry
-                  ? walletKeeperMaterializeFixedEntryForMonth(entry, now)
-                  : entry,
-            )
-            .toList()
-          ..sort((a, b) => b.date.compareTo(a.date));
-    final summary = LedgerSummary.fromEntries(materializedThisMonthEntries);
+    final unlinkedEntries = walletKeeperUnlinkedAssetEntries(entries, assets);
     final visibleUpcomingExpenses = _buildUpcomingFixedExpenses(
       entries,
       now: now,
       startOfToday: startOfToday,
     ).take(3).toList();
-    final recentFlow = materializedThisMonthEntries.take(3).toList();
-    final incomeRatio = (summary.monthIncome <= 0 && summary.monthExpense <= 0)
-        ? 0.5
-        : summary.monthIncome /
-              math.max(1, summary.monthIncome + summary.monthExpense);
-    final expenseRatio = (summary.monthIncome <= 0 && summary.monthExpense <= 0)
-        ? 0.0
-        : summary.monthExpense /
-              math.max(1, summary.monthIncome + summary.monthExpense);
-    final balanceRatio = (summary.monthIncome <= 0)
-        ? 0.0
-        : (summary.balance / math.max(1, summary.monthIncome)).clamp(0.0, 1.0);
 
     return Container(
       color: const Color(0xFFF7F8FA),
       child: Column(
         children: [
-          const _RootTabHeader(title: '리포트'),
+          const _RootTabHeader(title: '자산'),
           Expanded(
             child: ListView(
               padding: EdgeInsets.fromLTRB(16, 10, 16, bottomInset + 24),
               children: [
+                if (unlinkedEntries.isNotEmpty) ...[
+                  _UnlinkedAssetNotice(
+                    count: unlinkedEntries.length,
+                    onTap: onConnectUnlinkedEntries,
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                WalletKeeperAssetPortfolioSection(
+                  assets: assets,
+                  entries: entries,
+                  onAdd: onAddAsset,
+                  onEdit: onEditAsset,
+                  onOpenAllHistory: onOpenAllAssetHistory,
+                  onOpenHistory: onOpenAssetHistory,
+                ),
+                const SizedBox(height: 14),
                 _AssetSoftCard(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -5159,159 +5379,6 @@ class AssetPage extends StatelessWidget {
                                   : 16,
                             ),
                             child: _UpcomingExpenseRow(entry: entry),
-                          );
-                        }),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
-                _AssetSoftCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Text(
-                            '자금 흐름',
-                            style: TextStyle(
-                              color: Color(0xFF14171C),
-                              fontSize: 15,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          const Spacer(),
-                          Text(
-                            summary.balance >= 0 ? '이번 달 양호' : '이번 달 점검',
-                            style: TextStyle(
-                              color: summary.balance >= 0
-                                  ? const Color(0xFF29B15F)
-                                  : const Color(0xFFFF6A5F),
-                              fontSize: 12,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 14),
-                      Row(
-                        children: [
-                          const Text(
-                            '수입 대비 비율',
-                            style: TextStyle(
-                              color: Color(0xFF9BA3AF),
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          const Spacer(),
-                          Text(
-                            '${(incomeRatio * 100).round()}%',
-                            style: const TextStyle(
-                              color: Color(0xFF29B15F),
-                              fontSize: 12,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      _AssetProgressBar(
-                        ratio: incomeRatio,
-                        color: const Color(0xFF29B15F),
-                      ),
-                      const SizedBox(height: 14),
-                      _AssetFlowMetricRow(
-                        label: '수입',
-                        color: const Color(0xFF68A9FF),
-                        amount: formatSignedCurrency(
-                          summary.monthIncome,
-                          alwaysShowSign: true,
-                        ),
-                        amountColor: const Color(0xFF68A9FF),
-                        ratio: incomeRatio.clamp(0.0, 1.0),
-                      ),
-                      const SizedBox(height: 10),
-                      _AssetFlowMetricRow(
-                        label: '지출',
-                        color: const Color(0xFFFF6A5F),
-                        amount: formatSignedCurrency(-summary.monthExpense),
-                        amountColor: const Color(0xFFFF6A5F),
-                        ratio: expenseRatio.clamp(0.0, 1.0),
-                      ),
-                      const SizedBox(height: 10),
-                      _AssetFlowMetricRow(
-                        label: '남은금액',
-                        color: const Color(0xFF29B15F),
-                        amount: formatSignedCurrency(
-                          summary.balance,
-                          alwaysShowSign: true,
-                        ),
-                        amountColor: summary.balance >= 0
-                            ? const Color(0xFF29B15F)
-                            : const Color(0xFFFF6A5F),
-                        ratio: balanceRatio,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
-                _AssetSoftCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Text(
-                            '최근 자금 흐름',
-                            style: TextStyle(
-                              color: Color(0xFF14171C),
-                              fontSize: 15,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          const Spacer(),
-                          GestureDetector(
-                            onTap: onOpenFlowHistory,
-                            behavior: HitTestBehavior.opaque,
-                            child: const Row(
-                              children: [
-                                Text(
-                                  '전체보기',
-                                  style: TextStyle(
-                                    color: Color(0xFF97A1AF),
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                SizedBox(width: 2),
-                                Icon(
-                                  Icons.chevron_right_rounded,
-                                  size: 18,
-                                  color: Color(0xFF97A1AF),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 14),
-                      if (recentFlow.isEmpty)
-                        const _AssetSimpleEmpty(
-                          title: '최근 자금 흐름이 없습니다.',
-                          subtitle: '내역이 쌓이면 최근 변화가 이곳에 정리됩니다.',
-                        )
-                      else
-                        ...List.generate(recentFlow.length, (index) {
-                          return Column(
-                            children: [
-                              _RecentAssetFlowRow(entry: recentFlow[index]),
-                              if (index != recentFlow.length - 1)
-                                const Divider(
-                                  height: 20,
-                                  thickness: 1,
-                                  color: Color(0xFFE9EDF3),
-                                ),
-                            ],
                           );
                         }),
                     ],
@@ -5542,57 +5609,487 @@ List<_StatsTrendPoint> _buildRecentTrendPoints(
   }).where((point) => point.label.isNotEmpty).toList();
 }
 
-class AssetFlowHistoryPage extends StatelessWidget {
-  const AssetFlowHistoryPage({
+class AssetTransactionHistoryPage extends StatelessWidget {
+  const AssetTransactionHistoryPage({
     super.key,
+    required this.asset,
+    required this.assets,
     required this.entries,
+    required this.showAllAssets,
     required this.onBack,
+    required this.onEditEntry,
   });
 
+  final WalletKeeperAsset? asset;
+  final List<WalletKeeperAsset> assets;
   final List<LedgerEntry> entries;
+  final bool showAllAssets;
   final VoidCallback onBack;
+  final ValueChanged<LedgerEntry> onEditEntry;
 
   @override
   Widget build(BuildContext context) {
     final bottomInset = bottomOverlayHeightOf(context);
-    final recentFlow = List<LedgerEntry>.from(entries)
-      ..sort((a, b) => b.date.compareTo(a.date));
+    final selectedAsset = asset;
+    final linkedEntries = showAllAssets
+        ? walletKeeperAllAssetEntries(assets, entries)
+        : selectedAsset == null
+        ? const <LedgerEntry>[]
+        : walletKeeperAssetEntries(selectedAsset.id, entries);
+    final income = linkedEntries
+        .where((entry) => entry.type == EntryType.income)
+        .fold<double>(0, (sum, entry) => sum + entry.amount);
+    final expense = linkedEntries
+        .where((entry) => entry.type == EntryType.expense)
+        .fold<double>(0, (sum, entry) => sum + entry.amount);
 
     return Container(
       color: const Color(0xFFF7F8FA),
       child: Column(
         children: [
-          _CompactPageHeader(title: '최근 자금 흐름', onBack: onBack),
+          _CompactPageHeader(
+            title: showAllAssets
+                ? '전체 자산 기록'
+                : selectedAsset?.name ?? '자산 입출금',
+            onBack: onBack,
+          ),
           Expanded(
             child: ListView(
               padding: EdgeInsets.fromLTRB(16, 10, 16, bottomInset + 24),
               children: [
+                if (showAllAssets) ...[
+                  _AllAssetTransactionSummary(
+                    assets: assets,
+                    entries: entries,
+                    income: income,
+                    expense: expense,
+                  ),
+                  const SizedBox(height: 14),
+                ] else if (selectedAsset != null) ...[
+                  _AssetSoftCard(
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            WalletKeeperAssetIcon(
+                              type: selectedAsset.type,
+                              brandKey: selectedAsset.brandKey,
+                              iconBase64: selectedAsset.iconBase64,
+                              size: 46,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    selectedAsset.name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Color(0xFF20242A),
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    [
+                                      if (selectedAsset.institution.isNotEmpty)
+                                        selectedAsset.institution,
+                                      selectedAsset.type.label,
+                                      if (selectedAsset.lastFour.isNotEmpty)
+                                        '•••• ${selectedAsset.lastFour}',
+                                    ].join(' · '),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Color(0xFF969FAA),
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                const Text(
+                                  '현재 금액',
+                                  style: TextStyle(
+                                    color: Color(0xFF9AA2AD),
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  formatCurrency(
+                                    walletKeeperAssetCurrentBalance(
+                                      selectedAsset,
+                                      entries,
+                                    ),
+                                  ),
+                                  style: TextStyle(
+                                    color: selectedAsset.type.isLiability
+                                        ? const Color(0xFFFF695D)
+                                        : const Color(0xFF20242A),
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: -0.4,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 11,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF7F8FA),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: _AssetTransactionTotal(
+                                  label: '수입',
+                                  amount: income,
+                                  color: const Color(0xFF4F8FF7),
+                                  sign: '+',
+                                ),
+                              ),
+                              Container(
+                                width: 1,
+                                height: 30,
+                                color: const Color(0xFFE6EAF0),
+                              ),
+                              Expanded(
+                                child: _AssetTransactionTotal(
+                                  label: '지출',
+                                  amount: expense,
+                                  color: const Color(0xFFFF695D),
+                                  sign: '-',
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                ],
                 _AssetSoftCard(
-                  child: recentFlow.isEmpty
+                  child: linkedEntries.isEmpty
                       ? const _AssetSimpleEmpty(
-                          title: '최근 자금 흐름이 없습니다.',
-                          subtitle: '내역이 쌓이면 최근 변화가 이곳에 정리됩니다.',
+                          title: '연결된 입출금 내역이 없습니다.',
+                          subtitle: '자산을 연결해 기록하면 이곳에 최신순으로 표시됩니다.',
                         )
                       : Column(
-                          children: List.generate(recentFlow.length, (index) {
-                            return Column(
-                              children: [
-                                _RecentAssetFlowRow(entry: recentFlow[index]),
-                                if (index != recentFlow.length - 1)
-                                  const Divider(
-                                    height: 20,
-                                    thickness: 1,
-                                    color: Color(0xFFE9EDF3),
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              '입출금 기록',
+                              style: TextStyle(
+                                color: Color(0xFF20242A),
+                                fontSize: 15,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            ...List.generate(linkedEntries.length, (index) {
+                              final entry = linkedEntries[index];
+                              return Column(
+                                children: [
+                                  _AssetTransactionHistoryRow(
+                                    entry: entry,
+                                    onTap: () => onEditEntry(entry),
                                   ),
-                              ],
-                            );
-                          }),
+                                  if (index != linkedEntries.length - 1)
+                                    const Divider(
+                                      height: 1,
+                                      indent: 42,
+                                      color: Color(0xFFEEF1F4),
+                                    ),
+                                ],
+                              );
+                            }),
+                          ],
                         ),
                 ),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _AllAssetTransactionSummary extends StatelessWidget {
+  const _AllAssetTransactionSummary({
+    required this.assets,
+    required this.entries,
+    required this.income,
+    required this.expense,
+  });
+
+  final List<WalletKeeperAsset> assets;
+  final List<LedgerEntry> entries;
+  final double income;
+  final double expense;
+
+  @override
+  Widget build(BuildContext context) {
+    var netWorth = 0.0;
+    for (final asset in assets) {
+      final balance = math.max(
+        0.0,
+        walletKeeperAssetCurrentBalance(asset, entries),
+      );
+      netWorth += asset.type.isLiability ? -balance : balance;
+    }
+    return _AssetSoftCard(
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFE9E7),
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: const Icon(
+                  Icons.account_balance_wallet_rounded,
+                  size: 22,
+                  color: Color(0xFFE76158),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '전체 자산',
+                      style: TextStyle(
+                        color: Color(0xFF20242A),
+                        fontSize: 15,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${assets.length}개 자산의 연결 기록',
+                      style: const TextStyle(
+                        color: Color(0xFF969FAA),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  const Text(
+                    '순자산',
+                    style: TextStyle(
+                      color: Color(0xFF9AA2AD),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    formatCurrency(netWorth),
+                    style: TextStyle(
+                      color: netWorth < 0
+                          ? const Color(0xFFFF695D)
+                          : const Color(0xFF20242A),
+                      fontSize: 15,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.4,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF7F8FA),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _AssetTransactionTotal(
+                    label: '수입',
+                    amount: income,
+                    color: const Color(0xFF4F8FF7),
+                    sign: '+',
+                  ),
+                ),
+                Container(
+                  width: 1,
+                  height: 30,
+                  color: const Color(0xFFE6EAF0),
+                ),
+                Expanded(
+                  child: _AssetTransactionTotal(
+                    label: '지출',
+                    amount: expense,
+                    color: const Color(0xFFFF695D),
+                    sign: '-',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AssetTransactionTotal extends StatelessWidget {
+  const _AssetTransactionTotal({
+    required this.label,
+    required this.amount,
+    required this.color,
+    required this.sign,
+  });
+
+  final String label;
+  final double amount;
+  final Color color;
+  final String sign;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            color: Color(0xFF969FAA),
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          '$sign${formatCurrencyValue(amount)}',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: color,
+            fontSize: 13,
+            fontWeight: FontWeight.w900,
+            letterSpacing: -0.4,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _AssetTransactionHistoryRow extends StatelessWidget {
+  const _AssetTransactionHistoryRow({
+    required this.entry,
+    required this.onTap,
+  });
+
+  final LedgerEntry entry;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final isIncome = entry.type == EntryType.income;
+    final color = isIncome
+        ? const Color(0xFF4F8FF7)
+        : const Color(0xFFFF695D);
+    final title = entry.title.trim().isEmpty ? entry.category : entry.title.trim();
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 11),
+          child: Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.11),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(entry.type.icon, color: color, size: 16),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF252A31),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      '${DateFormat('yyyy.MM.dd').format(entry.date)} · ${entry.category}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF9AA2AD),
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '${isIncome ? '+' : '-'}${formatCurrencyValue(entry.amount)}',
+                style: TextStyle(
+                  color: color,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -0.4,
+                ),
+              ),
+              const SizedBox(width: 2),
+              const Icon(
+                Icons.chevron_right_rounded,
+                size: 18,
+                color: Color(0xFFBEC4CC),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -6763,8 +7260,8 @@ _AutocompletePanelLayout _resolveAutocompletePanelLayout(
   final keyboardTop = screenHeight - mediaQuery.viewInsets.bottom - 12;
   final safeTop = mediaQuery.padding.top + 12;
   final fieldContext = fieldKey.currentContext;
-  final renderBox = fieldContext?.findRenderObject() as RenderBox?;
-  if (renderBox == null || !renderBox.hasSize) {
+  final renderBox = _activeRenderBoxOf(fieldContext);
+  if (renderBox == null) {
     return const _AutocompletePanelLayout(
       direction: OptionsViewOpenDirection.down,
       maxHeight: 240,
@@ -6785,6 +7282,21 @@ _AutocompletePanelLayout _resolveAutocompletePanelLayout(
     direction: direction,
     maxHeight: math.max(1.0, math.min(preferredMaxHeight, availableHeight)),
   );
+}
+
+RenderBox? _activeRenderBoxOf(BuildContext? context) {
+  if (context == null) return null;
+  try {
+    final renderObject = context.findRenderObject();
+    if (renderObject is! RenderBox ||
+        !renderObject.attached ||
+        !renderObject.hasSize) {
+      return null;
+    }
+    return renderObject;
+  } on FlutterError {
+    return null;
+  }
 }
 
 class _SocialLoginButtonTile extends StatelessWidget {
@@ -7739,6 +8251,88 @@ class _AssetExpenseTrendChartState extends State<_AssetExpenseTrendChart>
   }
 }
 
+class _UnlinkedAssetNotice extends StatelessWidget {
+  const _UnlinkedAssetNotice({required this.count, required this.onTap});
+
+  final int count;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0xFFFFF0EE),
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 13, 12, 13),
+          child: Row(
+            children: [
+              Container(
+                width: 39,
+                height: 39,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.link_off_rounded,
+                  size: 20,
+                  color: Color(0xFFE76158),
+                ),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '자산과 연결되지 않은 내역이 $count건 있어요',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF282C32),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      '연결하면 자산별 잔액과 사용액이 정확해집니다.',
+                      style: TextStyle(
+                        color: Color(0xFF8A6B68),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE76158),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Text(
+                  '연결하기',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _AssetSoftCard extends StatelessWidget {
   const _AssetSoftCard({required this.child});
 
@@ -7822,158 +8416,6 @@ class _UpcomingExpenseRow extends StatelessWidget {
         const SizedBox(width: 10),
         Text(
           formatCurrency(entry.amount),
-          style: TextStyle(
-            color: entry.type == EntryType.expense
-                ? const Color(0xFFFF6A5F)
-                : const Color(0xFF2F6BFF),
-            fontSize: 14,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _AssetFlowMetricRow extends StatelessWidget {
-  const _AssetFlowMetricRow({
-    required this.label,
-    required this.color,
-    required this.amount,
-    required this.amountColor,
-    required this.ratio,
-  });
-
-  final String label;
-  final Color color;
-  final String amount;
-  final Color amountColor;
-  final double ratio;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Container(
-              width: 8,
-              height: 8,
-              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-            ),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Text(
-                label,
-                style: const TextStyle(
-                  color: Color(0xFF7D8896),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-            Text(
-              amount,
-              style: TextStyle(
-                color: amountColor,
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        _AssetProgressBar(ratio: ratio, color: color),
-      ],
-    );
-  }
-}
-
-class _AssetProgressBar extends StatelessWidget {
-  const _AssetProgressBar({required this.ratio, required this.color});
-
-  final double ratio;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(999),
-      child: SizedBox(
-        height: 16,
-        child: Stack(
-          children: [
-            Container(color: const Color(0xFFE9EDF3)),
-            FractionallySizedBox(
-              widthFactor: ratio.clamp(0.0, 1.0),
-              child: Container(color: color),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _RecentAssetFlowRow extends StatelessWidget {
-  const _RecentAssetFlowRow({required this.entry});
-
-  final LedgerEntry entry;
-
-  @override
-  Widget build(BuildContext context) {
-    final accent = _assetAccentForEntry(entry);
-    final prefix = entry.type == EntryType.expense ? '-' : '+';
-    return Row(
-      children: [
-        Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
-          child: Icon(
-            entry.isFixedEntry
-                ? Icons.event_repeat_rounded
-                : _assetIconForCategory(entry.category),
-            size: 19,
-            color: Colors.white,
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                entry.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Color(0xFF14171C),
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                entry.isFixedEntry
-                    ? '${DateFormat('M.d').format(entry.date)} · ${walletKeeperFixedEntryLabel(entry)} · 매월 ${entry.fixedDay}일'
-                    : '${DateFormat('M.d HH:mm').format(entry.date)} · ${entry.category}',
-                style: const TextStyle(
-                  color: Color(0xFF8D97A5),
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 10),
-        Text(
-          formatSignedCurrency(
-            prefix == '-' ? -entry.amount : entry.amount,
-            alwaysShowSign: true,
-          ),
           style: TextStyle(
             color: entry.type == EntryType.expense
                 ? const Color(0xFFFF6A5F)

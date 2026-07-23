@@ -10,7 +10,7 @@ enum _ShellRouteKind {
   settingsInquiryCompose,
   settingsTerms,
   assetUpcomingHistory,
-  assetFlowHistory,
+  assetTransactionHistory,
   editor,
 }
 
@@ -21,59 +21,70 @@ class _ShellRoute {
     : kind = _ShellRouteKind.root,
       existing = null,
       smsDraft = null,
-      inquiry = null;
+      inquiry = null,
+      assetId = null;
   const _ShellRoute.smsInbox()
     : kind = _ShellRouteKind.smsInbox,
       existing = null,
       smsDraft = null,
-      inquiry = null;
+      inquiry = null,
+      assetId = null;
   const _ShellRoute.smsSettings()
     : kind = _ShellRouteKind.smsSettings,
       existing = null,
       smsDraft = null,
-      inquiry = null;
+      inquiry = null,
+      assetId = null;
   const _ShellRoute.settingsProfile()
     : kind = _ShellRouteKind.settingsProfile,
       existing = null,
       smsDraft = null,
-      inquiry = null;
+      inquiry = null,
+      assetId = null;
   const _ShellRoute.settingsInquiryList()
     : kind = _ShellRouteKind.settingsInquiryList,
       existing = null,
       smsDraft = null,
-      inquiry = null;
+      inquiry = null,
+      assetId = null;
   const _ShellRoute.settingsInquiryDetail({required this.inquiry})
     : kind = _ShellRouteKind.settingsInquiryDetail,
       existing = null,
-      smsDraft = null;
+      smsDraft = null,
+      assetId = null;
   const _ShellRoute.settingsInquiryCompose()
     : kind = _ShellRouteKind.settingsInquiryCompose,
       existing = null,
       smsDraft = null,
-      inquiry = null;
+      inquiry = null,
+      assetId = null;
   const _ShellRoute.settingsTerms()
     : kind = _ShellRouteKind.settingsTerms,
       existing = null,
       smsDraft = null,
-      inquiry = null;
+      inquiry = null,
+      assetId = null;
   const _ShellRoute.assetUpcomingHistory()
     : kind = _ShellRouteKind.assetUpcomingHistory,
       existing = null,
       smsDraft = null,
-      inquiry = null;
-  const _ShellRoute.assetFlowHistory()
-    : kind = _ShellRouteKind.assetFlowHistory,
+      inquiry = null,
+      assetId = null;
+  const _ShellRoute.assetTransactionHistory({this.assetId})
+    : kind = _ShellRouteKind.assetTransactionHistory,
       existing = null,
       smsDraft = null,
       inquiry = null;
   const _ShellRoute.editor({this.existing, this.smsDraft})
     : kind = _ShellRouteKind.editor,
-      inquiry = null;
+      inquiry = null,
+      assetId = null;
 
   final _ShellRouteKind kind;
   final LedgerEntry? existing;
   final WalletKeeperSmsDraft? smsDraft;
   final WalletKeeperInquiry? inquiry;
+  final String? assetId;
 }
 
 class LedgerHomePage extends StatefulWidget {
@@ -108,6 +119,8 @@ class _LedgerHomePageState extends State<LedgerHomePage>
       WalletKeeperMemoRepository();
   final WalletKeeperBudgetRepository _budgetRepository =
       WalletKeeperBudgetRepository();
+  final WalletKeeperAssetRepository _assetRepository =
+      WalletKeeperAssetRepository();
   final WalletKeeperInquiryRepository _inquiryRepository =
       WalletKeeperInquiryRepository();
   final WalletKeeperAccountRepository _accountRepository =
@@ -120,6 +133,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
   List<LedgerEntry> _entries = const [];
   List<WalletKeeperMemo> _memos = const [];
   List<WalletKeeperBudgetSetting> _budgets = const [];
+  List<WalletKeeperAsset> _assets = const [];
   List<WalletKeeperInquiry> _inquiries = const [];
   List<WalletKeeperSmsDraft> _smsDrafts = const [];
   WalletKeeperUserSession? _session;
@@ -137,6 +151,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
   Timer? _pendingMmsTimer;
   StreamSubscription<String>? _notificationRouteSubscription;
   int _selectedTab = 0;
+  int? _selectedStatsKind;
   bool _smsListenerAttached = false;
   bool _financialAppNotificationEnabled = false;
   int _selectedOverviewTab = 0;
@@ -215,6 +230,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
     final loadedEntries = await _repository.load();
     final loadedMemos = await _memoRepository.load();
     final loadedBudgets = await _budgetRepository.load();
+    final loadedAssets = await _assetRepository.load();
     final loadedDrafts = await _smsAutomationRepository.loadInboxDrafts();
     final loadedSettings = await _smsSettingsRepository.load();
     final loadedAppSettings = await _appSettingsRepository.load();
@@ -227,6 +243,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
       _entries = loadedEntries;
       _memos = loadedMemos;
       _budgets = loadedBudgets;
+      _assets = loadedAssets;
       _smsDrafts = loadedDrafts;
       _smsSettings = loadedSettings;
       _appSettings = loadedAppSettings;
@@ -267,6 +284,9 @@ class _LedgerHomePageState extends State<LedgerHomePage>
       _budgets = remoteBundle != null && loadedBudgets.isEmpty
           ? remoteBundle.budgets
           : loadedBudgets;
+      _assets = remoteBundle != null && loadedAssets.isEmpty
+          ? remoteBundle.assets
+          : loadedAssets;
       _inquiries = loadedInquiries;
       _smsSettings = remoteBundle?.smsSettings ?? loadedSettings;
       _session = session;
@@ -279,6 +299,9 @@ class _LedgerHomePageState extends State<LedgerHomePage>
     }
     if (remoteBundle != null && loadedBudgets.isEmpty) {
       await _budgetRepository.save(remoteBundle.budgets);
+    }
+    if (remoteBundle != null && loadedAssets.isEmpty) {
+      await _assetRepository.save(remoteBundle.assets);
     }
     if (remoteBundle != null) {
       await _smsSettingsRepository.save(remoteBundle.smsSettings);
@@ -326,6 +349,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
         entries: _entries,
         memos: _memos,
         budgets: _budgets,
+        assets: _assets,
         smsSettings: _smsSettings,
       );
     } catch (_) {}
@@ -336,6 +360,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
       entries: _entries,
       memos: _memos,
       budgets: _budgets,
+      assets: _assets,
       smsSettings: _smsSettings,
     );
   }
@@ -356,6 +381,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
     await _repository.save(sortedEntries);
     await _memoRepository.save(bundle.memos);
     await _budgetRepository.save(sortedBudgets);
+    await _assetRepository.save(bundle.assets);
     await _smsSettingsRepository.save(bundle.smsSettings);
     if (!mounted) return;
     setState(() {
@@ -364,6 +390,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
       _entries = sortedEntries;
       _memos = bundle.memos;
       _budgets = sortedBudgets;
+      _assets = bundle.assets;
       _smsSettings = bundle.smsSettings;
     });
   }
@@ -378,6 +405,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
       entries: localBundle.entries,
       memos: localBundle.memos,
       budgets: localBundle.budgets,
+      assets: localBundle.assets,
       smsSettings: localBundle.smsSettings,
     );
     if (!mounted) return;
@@ -489,6 +517,161 @@ class _LedgerHomePageState extends State<LedgerHomePage>
     });
     await _syncCloud();
     await showAppToast('내역을 저장했습니다.');
+  }
+
+  Future<void> _saveAsset(WalletKeeperAsset asset) async {
+    final next = [..._assets];
+    final index = next.indexWhere((item) => item.id == asset.id);
+    if (index >= 0) {
+      next[index] = asset;
+    } else {
+      next.add(asset);
+    }
+    await _assetRepository.save(next);
+    if (!mounted) return;
+    setState(() => _assets = next);
+    await _syncCloud();
+  }
+
+  Future<WalletKeeperAsset?> _createAssetFromEntryEditor(
+    WalletKeeperAssetSuggestion? suggestion,
+  ) async {
+    final result = await showWalletKeeperAssetEditorSheet(
+      context,
+      suggestion: suggestion,
+      entries: _entries,
+    );
+    final asset = result?.asset;
+    if (asset == null) return null;
+    await _saveAsset(asset);
+    if (mounted) {
+      await showAppToast('자산을 추가하고 기록에 연결했습니다.');
+    }
+    return asset;
+  }
+
+  Future<void> _openAssetEditor({WalletKeeperAsset? existing}) async {
+    final result = await showWalletKeeperAssetEditorSheet(
+      context,
+      existing: existing,
+      entries: _entries,
+    );
+    if (result == null) return;
+    final asset = result.asset;
+    if (asset != null) {
+      await _saveAsset(asset);
+      if (mounted) {
+        await showAppToast(existing == null ? '자산을 추가했습니다.' : '자산을 수정했습니다.');
+      }
+      return;
+    }
+    final deletedAssetId = result.deletedAssetId;
+    if (deletedAssetId == null) return;
+    final nextAssets = _assets
+        .where((asset) => asset.id != deletedAssetId)
+        .toList();
+    final nextEntries = _entries
+        .map(
+          (entry) => entry.assetId == deletedAssetId
+              ? entry.copyWith(clearAssetId: true)
+              : entry,
+        )
+        .toList();
+    await Future.wait([
+      _assetRepository.save(nextAssets),
+      _repository.save(nextEntries),
+    ]);
+    if (!mounted) return;
+    setState(() {
+      _assets = nextAssets;
+      _entries = nextEntries;
+    });
+    await _syncCloud();
+    await showAppToast('자산을 삭제했습니다.');
+  }
+
+  Future<void> _openUnlinkedAssetEntries() async {
+    final unlinkedEntries = walletKeeperUnlinkedAssetEntries(_entries, _assets);
+    if (unlinkedEntries.isEmpty) {
+      await showAppToast('연결되지 않은 내역이 없습니다.');
+      return;
+    }
+    if (!mounted) return;
+    await showWalletKeeperUnlinkedAssetEntriesSheet(
+      context,
+      entries: unlinkedEntries,
+      assets: _assets,
+      onSelectAsset: _selectAssetForEntry,
+    );
+  }
+
+  Future<WalletKeeperAssetConnectionResult?> _selectAssetForEntry(
+    LedgerEntry source,
+  ) async {
+    var entry = source;
+    for (final candidate in _entries) {
+      if (candidate.id == source.id) {
+        entry = candidate;
+        break;
+      }
+    }
+    final suggestion = inferWalletKeeperAssetSuggestionFromEntry(entry);
+    WalletKeeperAsset? selectedAsset;
+
+    if (_assets.isEmpty) {
+      selectedAsset = await _createAssetFromEntryEditor(suggestion);
+      if (selectedAsset == null) return null;
+    } else {
+      while (mounted) {
+        final selectedId = await showWalletKeeperAssetSelectorSheet(
+          context,
+          assets: _assets,
+          entries: _entries,
+          selectedAssetId: entry.assetId,
+          suggestion: suggestion,
+        );
+        if (selectedId == null || !mounted) return null;
+        if (selectedId == _assetSelectorCreate) {
+          selectedAsset = await _createAssetFromEntryEditor(suggestion);
+          if (selectedAsset == null) continue;
+          break;
+        }
+        if (selectedId == _assetSelectorNone) {
+          selectedAsset = null;
+          break;
+        }
+        for (final asset in _assets) {
+          if (asset.id == selectedId) {
+            selectedAsset = asset;
+            break;
+          }
+        }
+        if (selectedAsset != null) break;
+      }
+    }
+
+    final updatedEntry = entry.copyWith(
+      assetId: selectedAsset?.id,
+      clearAssetId: selectedAsset == null,
+    );
+    if (updatedEntry.assetId != entry.assetId) {
+      final nextEntries = [..._entries];
+      final index = nextEntries.indexWhere((item) => item.id == entry.id);
+      if (index < 0) return null;
+      nextEntries[index] = updatedEntry;
+      nextEntries.sort((a, b) => b.date.compareTo(a.date));
+      await _repository.save(nextEntries);
+      if (!mounted) return null;
+      setState(() => _entries = nextEntries);
+      await _syncCloud();
+      await showAppToast(
+        selectedAsset == null ? '자산 연결을 해제했습니다.' : '${selectedAsset.name}에 연결했습니다.',
+      );
+    }
+    return WalletKeeperAssetConnectionResult(
+      entry: updatedEntry,
+      asset: selectedAsset,
+    );
   }
 
   List<LedgerEntry> _entriesForMonth(DateTime month) {
@@ -728,6 +911,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
         _repository.clear(),
         _memoRepository.clear(),
         _budgetRepository.clear(),
+        _assetRepository.clear(),
         _smsAutomationRepository.clearDrafts(),
       ]);
       final guest = await _accountRepository.bootstrapGuest();
@@ -737,6 +921,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
         _entries = const [];
         _memos = const [];
         _budgets = const [];
+        _assets = const [];
         _inquiries = const [];
         _smsDrafts = const [];
         _routeStack
@@ -839,8 +1024,10 @@ class _LedgerHomePageState extends State<LedgerHomePage>
                     key: editorKey,
                     existing: existing,
                     categorySuggestions: _categorySuggestions,
+                    assets: _assets,
                     featureAccess: widget.featureAccess,
                     onRequestSmsAccess: widget.onRequestFeatureAccess,
+                    onCreateAsset: _createAssetFromEntryEditor,
                     onCancel: () => attemptClose(sheetContext),
                     onDeleteEntry: existing == null
                         ? null
@@ -1227,7 +1414,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
         _currentRoute.kind == _ShellRouteKind.settingsInquiryCompose ||
         _currentRoute.kind == _ShellRouteKind.settingsTerms ||
         _currentRoute.kind == _ShellRouteKind.assetUpcomingHistory ||
-        _currentRoute.kind == _ShellRouteKind.assetFlowHistory;
+        _currentRoute.kind == _ShellRouteKind.assetTransactionHistory;
     final bottomOverlayHeight = showBottomBar
         ? _walletKeeperBottomNavSectionHeight +
               MediaQuery.paddingOf(context).bottom +
@@ -1256,15 +1443,33 @@ class _LedgerHomePageState extends State<LedgerHomePage>
               await _deleteEntry(entry);
             },
           ),
-          StatsPage(entries: _entries),
+          StatsPage(
+            entries: _entries,
+            selectedKind: _selectedStatsKind,
+            onSelectedKindChanged: (kind) {
+              if (_selectedStatsKind == kind) return;
+              setState(() => _selectedStatsKind = kind);
+            },
+          ),
           AssetPage(
             entries: _entries,
+            assets: _assets,
             session: _session,
+            onAddAsset: () => _openAssetEditor(),
+            onEditAsset: (asset) => _openAssetEditor(existing: asset),
+            onConnectUnlinkedEntries: _openUnlinkedAssetEntries,
             onOpenUpcomingExpenses: () => setState(
               () => _routeStack.add(const _ShellRoute.assetUpcomingHistory()),
             ),
-            onOpenFlowHistory: () => setState(
-              () => _routeStack.add(const _ShellRoute.assetFlowHistory()),
+            onOpenAllAssetHistory: () => setState(
+              () => _routeStack.add(
+                const _ShellRoute.assetTransactionHistory(),
+              ),
+            ),
+            onOpenAssetHistory: (asset) => setState(
+              () => _routeStack.add(
+                _ShellRoute.assetTransactionHistory(assetId: asset.id),
+              ),
             ),
           ),
           SettingsPage(
@@ -1395,10 +1600,21 @@ class _LedgerHomePageState extends State<LedgerHomePage>
           onBack: () => setState(() => _routeStack.removeLast()),
         );
         break;
-      case _ShellRouteKind.assetFlowHistory:
-        page = AssetFlowHistoryPage(
+      case _ShellRouteKind.assetTransactionHistory:
+        WalletKeeperAsset? selectedAsset;
+        for (final asset in _assets) {
+          if (asset.id == _currentRoute.assetId) {
+            selectedAsset = asset;
+            break;
+          }
+        }
+        page = AssetTransactionHistoryPage(
+          asset: selectedAsset,
+          assets: _assets,
           entries: _entries,
+          showAllAssets: _currentRoute.assetId == null,
           onBack: () => setState(() => _routeStack.removeLast()),
+          onEditEntry: (entry) => _showEntryEditorSheet(existing: entry),
         );
         break;
       case _ShellRouteKind.editor:
@@ -1407,8 +1623,10 @@ class _LedgerHomePageState extends State<LedgerHomePage>
           existing: _currentRoute.existing,
           smsDraft: _currentRoute.smsDraft,
           categorySuggestions: _categorySuggestions,
+          assets: _assets,
           featureAccess: widget.featureAccess,
           onRequestSmsAccess: widget.onRequestFeatureAccess,
+          onCreateAsset: _createAssetFromEntryEditor,
           onCancel: () async {
             final canLeave =
                 await _editorPageKey.currentState?.confirmDiscardIfNeeded() ??

@@ -763,7 +763,7 @@ class WalletKeeperSmsDraft {
     );
   }
 
-  LedgerEntry toEntry() {
+  LedgerEntry toEntry({String? assetId}) {
     return LedgerEntry(
       id: id,
       title: title,
@@ -774,6 +774,7 @@ class WalletKeeperSmsDraft {
       type: type,
       date: date,
       createdAt: DateTime.now(),
+      assetId: assetId,
     );
   }
 }
@@ -792,6 +793,8 @@ class WalletKeeperSmsHandledResult {
 
 class WalletKeeperSmsAutomationRepository {
   final LedgerRepository _ledgerRepository = LedgerRepository();
+  final WalletKeeperAssetRepository _assetRepository =
+      WalletKeeperAssetRepository();
   final Telephony _telephony = Telephony.instance;
   final WalletKeeperSmsReportClient _reportClient =
       WalletKeeperSmsReportClient();
@@ -850,7 +853,12 @@ class WalletKeeperSmsAutomationRepository {
         await _markProcessed(draft.id);
         return null;
       }
-      final nextEntries = [...entries, draft.toEntry()]
+      final assets = await _assetRepository.load();
+      final detectedAsset = detectWalletKeeperAsset(draft, assets);
+      final nextEntries = [
+        ...entries,
+        draft.toEntry(assetId: detectedAsset?.id),
+      ]
         ..sort((a, b) => b.date.compareTo(a.date));
       await _ledgerRepository.save(nextEntries);
       await _markProcessed(draft.id);
@@ -2201,6 +2209,7 @@ class LedgerEntry {
     required this.date,
     required this.createdAt,
     this.fixedDay,
+    this.assetId,
   });
 
   final String id;
@@ -2213,6 +2222,7 @@ class LedgerEntry {
   final DateTime date;
   final DateTime createdAt;
   final int? fixedDay;
+  final String? assetId;
 
   bool get isFixedEntry => fixedDay != null;
   bool get isFixedIncome => type == EntryType.income && fixedDay != null;
@@ -2230,6 +2240,8 @@ class LedgerEntry {
     DateTime? createdAt,
     int? fixedDay,
     bool clearFixedDay = false,
+    String? assetId,
+    bool clearAssetId = false,
   }) {
     return LedgerEntry(
       id: id ?? this.id,
@@ -2242,6 +2254,7 @@ class LedgerEntry {
       date: date ?? this.date,
       createdAt: createdAt ?? this.createdAt,
       fixedDay: clearFixedDay ? null : fixedDay ?? this.fixedDay,
+      assetId: clearAssetId ? null : assetId ?? this.assetId,
     );
   }
 
@@ -2256,6 +2269,7 @@ class LedgerEntry {
     'date': date.toIso8601String(),
     'createdAt': createdAt.toIso8601String(),
     if (fixedDay != null) 'fixedDay': fixedDay,
+    if (assetId != null && assetId!.isNotEmpty) 'assetId': assetId,
   };
 
   factory LedgerEntry.fromJson(Map<String, dynamic> json) => LedgerEntry(
@@ -2271,6 +2285,7 @@ class LedgerEntry {
     date: DateTime.parse(json['date'] as String),
     createdAt: DateTime.parse(json['createdAt'] as String),
     fixedDay: (json['fixedDay'] as num?)?.toInt(),
+    assetId: json['assetId']?.toString(),
   );
 }
 
@@ -2792,21 +2807,27 @@ class WalletKeeperSyncBundle {
     required this.memos,
     required this.budgets,
     required this.smsSettings,
+    this.assets = const [],
   });
 
   final List<LedgerEntry> entries;
   final List<WalletKeeperMemo> memos;
   final List<WalletKeeperBudgetSetting> budgets;
   final WalletKeeperSmsSettings smsSettings;
+  final List<WalletKeeperAsset> assets;
 
   bool get hasMeaningfulData =>
-      entries.isNotEmpty || memos.isNotEmpty || budgets.isNotEmpty;
+      entries.isNotEmpty ||
+      memos.isNotEmpty ||
+      budgets.isNotEmpty ||
+      assets.isNotEmpty;
 
   Map<String, dynamic> toJson() => {
     'entries': entries.map((entry) => entry.toJson()).toList(),
     'memos': memos.map((memo) => memo.toJson()).toList(),
     'budgets': budgets.map((budget) => budget.toJson()).toList(),
     'smsSettings': smsSettings.toJson(),
+    'assets': assets.map((asset) => asset.toJson()).toList(),
   };
 
   factory WalletKeeperSyncBundle.fromJson(Map<String, dynamic> json) {
@@ -2822,10 +2843,15 @@ class WalletKeeperSyncBundle {
         .cast<Map<String, dynamic>>()
         .map(WalletKeeperBudgetSetting.fromJson)
         .toList();
+    final assets = ((json['assets'] as List?) ?? const [])
+        .cast<Map<String, dynamic>>()
+        .map(WalletKeeperAsset.fromJson)
+        .toList();
     return WalletKeeperSyncBundle(
       entries: entries,
       memos: memos,
       budgets: budgets,
+      assets: assets,
       smsSettings: walletKeeperSmsSettingsFromJson(
         (json['smsSettings'] as Map?)?.cast<String, dynamic>() ?? const {},
       ),
@@ -3310,6 +3336,7 @@ class WalletKeeperCloudSyncRepository {
     required List<LedgerEntry> entries,
     required List<WalletKeeperMemo> memos,
     required List<WalletKeeperBudgetSetting> budgets,
+    required List<WalletKeeperAsset> assets,
     required WalletKeeperSmsSettings smsSettings,
   }) async {
     final session =
@@ -3320,6 +3347,7 @@ class WalletKeeperCloudSyncRepository {
       entries: entries,
       memos: memos,
       budgets: budgets,
+      assets: assets,
       smsSettings: smsSettings,
     );
   }
@@ -3329,6 +3357,7 @@ class WalletKeeperCloudSyncRepository {
     required List<LedgerEntry> entries,
     required List<WalletKeeperMemo> memos,
     required List<WalletKeeperBudgetSetting> budgets,
+    required List<WalletKeeperAsset> assets,
     required WalletKeeperSmsSettings smsSettings,
   }) async {
     final deviceInfo = await _accountRepository.getDeviceInfo();
@@ -3345,6 +3374,7 @@ class WalletKeeperCloudSyncRepository {
           entries: entries,
           memos: memos,
           budgets: budgets,
+          assets: assets,
           smsSettings: smsSettings,
         ).toJson(),
       }),

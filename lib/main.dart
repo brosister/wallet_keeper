@@ -34,10 +34,12 @@ part 'src/overview_page.dart';
 part 'src/secondary_pages.dart';
 part 'src/shared_widgets.dart';
 part 'src/ledger_domain.dart';
+part 'src/asset_management.dart';
 
 const _storageKey = 'wallet_keeper_entries_v1';
 const _memoStorageKey = 'wallet_keeper_memos_v1';
 const _budgetStorageKey = 'wallet_keeper_budgets_v1';
+const _assetStorageKey = 'wallet_keeper_assets_v1';
 const _walletKeeperBottomNavSectionHeight = 112.0;
 const _walletKeeperAdSettingsUri =
     'https://app-master.officialsite.kr/api/wallet-keeper/ad-settings';
