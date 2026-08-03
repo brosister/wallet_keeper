@@ -654,6 +654,51 @@ class WalletKeeperParsedMessage {
   }
 }
 
+class WalletKeeperNotificationSource {
+  const WalletKeeperNotificationSource({
+    required this.sourceType,
+    required this.address,
+    required this.appName,
+    required this.title,
+    required this.body,
+    required this.appIconBase64,
+    required this.receivedAt,
+  });
+
+  final String sourceType;
+  final String address;
+  final String appName;
+  final String title;
+  final String body;
+  final String appIconBase64;
+  final DateTime receivedAt;
+
+  Map<String, dynamic> toJson() => {
+    'sourceType': sourceType,
+    'address': address,
+    'appName': appName,
+    'title': title,
+    'body': body,
+    'appIconBase64': appIconBase64,
+    'receivedAt': receivedAt.toIso8601String(),
+  };
+
+  factory WalletKeeperNotificationSource.fromJson(
+    Map<String, dynamic> json,
+  ) {
+    final rawReceivedAt = json['receivedAt']?.toString() ?? '';
+    return WalletKeeperNotificationSource(
+      sourceType: json['sourceType']?.toString() ?? '',
+      address: json['address']?.toString() ?? '',
+      appName: json['appName']?.toString() ?? '',
+      title: json['title']?.toString() ?? '',
+      body: json['body']?.toString() ?? '',
+      appIconBase64: json['appIconBase64']?.toString() ?? '',
+      receivedAt: DateTime.tryParse(rawReceivedAt) ?? DateTime.now(),
+    );
+  }
+}
+
 class WalletKeeperSmsDraft {
   const WalletKeeperSmsDraft({
     required this.id,
@@ -670,6 +715,10 @@ class WalletKeeperSmsDraft {
     required this.eventType,
     required this.matchedRule,
     required this.sourceAppIconBase64,
+    this.sourceAppName = '',
+    this.sourceNotificationTitle = '',
+    this.sourceNotificationBody = '',
+    this.sourceReceivedAt,
   });
 
   final String id;
@@ -686,6 +735,10 @@ class WalletKeeperSmsDraft {
   final String eventType;
   final String matchedRule;
   final String sourceAppIconBase64;
+  final String sourceAppName;
+  final String sourceNotificationTitle;
+  final String sourceNotificationBody;
+  final DateTime? sourceReceivedAt;
 
   WalletKeeperSmsDraft copyWith({
     String? id,
@@ -702,6 +755,10 @@ class WalletKeeperSmsDraft {
     String? eventType,
     String? matchedRule,
     String? sourceAppIconBase64,
+    String? sourceAppName,
+    String? sourceNotificationTitle,
+    String? sourceNotificationBody,
+    DateTime? sourceReceivedAt,
   }) {
     return WalletKeeperSmsDraft(
       id: id ?? this.id,
@@ -718,6 +775,12 @@ class WalletKeeperSmsDraft {
       eventType: eventType ?? this.eventType,
       matchedRule: matchedRule ?? this.matchedRule,
       sourceAppIconBase64: sourceAppIconBase64 ?? this.sourceAppIconBase64,
+      sourceAppName: sourceAppName ?? this.sourceAppName,
+      sourceNotificationTitle:
+          sourceNotificationTitle ?? this.sourceNotificationTitle,
+      sourceNotificationBody:
+          sourceNotificationBody ?? this.sourceNotificationBody,
+      sourceReceivedAt: sourceReceivedAt ?? this.sourceReceivedAt,
     );
   }
 
@@ -736,6 +799,11 @@ class WalletKeeperSmsDraft {
     'eventType': eventType,
     'matchedRule': matchedRule,
     'sourceAppIconBase64': sourceAppIconBase64,
+    'sourceAppName': sourceAppName,
+    'sourceNotificationTitle': sourceNotificationTitle,
+    'sourceNotificationBody': sourceNotificationBody,
+    if (sourceReceivedAt != null)
+      'sourceReceivedAt': sourceReceivedAt!.toIso8601String(),
   };
 
   factory WalletKeeperSmsDraft.fromJson(Map<String, dynamic> json) {
@@ -760,6 +828,35 @@ class WalletKeeperSmsDraft {
       eventType: json['eventType']?.toString() ?? '',
       matchedRule: json['matchedRule']?.toString() ?? '',
       sourceAppIconBase64: json['sourceAppIconBase64']?.toString() ?? '',
+      sourceAppName: json['sourceAppName']?.toString() ?? '',
+      sourceNotificationTitle:
+          json['sourceNotificationTitle']?.toString() ?? '',
+      sourceNotificationBody:
+          json['sourceNotificationBody']?.toString() ?? '',
+      sourceReceivedAt: DateTime.tryParse(
+        json['sourceReceivedAt']?.toString() ?? '',
+      ),
+    );
+  }
+
+  WalletKeeperNotificationSource toNotificationSource() {
+    final resolvedAppName = sourceAppName.trim().isNotEmpty
+        ? sourceAppName.trim()
+        : institution.trim().isNotEmpty
+        ? institution.trim()
+        : sourceType == 'app_notification'
+        ? sourceAddress.trim()
+        : '문자';
+    return WalletKeeperNotificationSource(
+      sourceType: sourceType,
+      address: sourceAddress,
+      appName: resolvedAppName,
+      title: sourceNotificationTitle,
+      body: sourceNotificationBody.trim().isNotEmpty
+          ? sourceNotificationBody
+          : rawBody,
+      appIconBase64: sourceAppIconBase64,
+      receivedAt: sourceReceivedAt ?? date,
     );
   }
 
@@ -775,6 +872,7 @@ class WalletKeeperSmsDraft {
       date: date,
       createdAt: DateTime.now(),
       assetId: assetId,
+      sourceNotification: toNotificationSource(),
     );
   }
 }
@@ -1125,12 +1223,15 @@ class WalletKeeperSmsAutomationRepository {
       final titleHint = (item['titleHint'] as String?)?.trim() ?? '';
       final textBody = (item['textBody'] as String?)?.trim() ?? '';
       final sourceAddress = (item['address'] as String?)?.trim() ?? '';
+      final sourceAppName = (item['appName'] as String?)?.trim() ?? '';
+      final receivedAt = DateTime.fromMillisecondsSinceEpoch(
+        (item['dateMillis'] as num?)?.toInt() ??
+            DateTime.now().millisecondsSinceEpoch,
+      );
       final draft = WalletKeeperSmsParser.parseRawMessage(
         body: textBody.isNotEmpty ? textBody : body,
         sender: sourceAddress,
-        dateMillis:
-            (item['dateMillis'] as num?)?.toInt() ??
-            DateTime.now().millisecondsSinceEpoch,
+        dateMillis: receivedAt.millisecondsSinceEpoch,
         sourceId: (item['id'] as String?)?.trim(),
         sourceType: 'app_notification',
         titleHint: titleHint,
@@ -1144,6 +1245,10 @@ class WalletKeeperSmsAutomationRepository {
             sourceAppIconBase64: iconBytes == null || iconBytes.isEmpty
                 ? ''
                 : base64Encode(iconBytes),
+            sourceAppName: sourceAppName,
+            sourceNotificationTitle: titleHint,
+            sourceNotificationBody: textBody.isNotEmpty ? textBody : body,
+            sourceReceivedAt: receivedAt,
           ),
         );
       }
@@ -2210,6 +2315,7 @@ class LedgerEntry {
     required this.createdAt,
     this.fixedDay,
     this.assetId,
+    this.sourceNotification,
   });
 
   final String id;
@@ -2223,6 +2329,7 @@ class LedgerEntry {
   final DateTime createdAt;
   final int? fixedDay;
   final String? assetId;
+  final WalletKeeperNotificationSource? sourceNotification;
 
   bool get isFixedEntry => fixedDay != null;
   bool get isFixedIncome => type == EntryType.income && fixedDay != null;
@@ -2242,6 +2349,7 @@ class LedgerEntry {
     bool clearFixedDay = false,
     String? assetId,
     bool clearAssetId = false,
+    WalletKeeperNotificationSource? sourceNotification,
   }) {
     return LedgerEntry(
       id: id ?? this.id,
@@ -2255,6 +2363,7 @@ class LedgerEntry {
       createdAt: createdAt ?? this.createdAt,
       fixedDay: clearFixedDay ? null : fixedDay ?? this.fixedDay,
       assetId: clearAssetId ? null : assetId ?? this.assetId,
+      sourceNotification: sourceNotification ?? this.sourceNotification,
     );
   }
 
@@ -2270,6 +2379,8 @@ class LedgerEntry {
     'createdAt': createdAt.toIso8601String(),
     if (fixedDay != null) 'fixedDay': fixedDay,
     if (assetId != null && assetId!.isNotEmpty) 'assetId': assetId,
+    if (sourceNotification != null)
+      'sourceNotification': sourceNotification!.toJson(),
   };
 
   factory LedgerEntry.fromJson(Map<String, dynamic> json) => LedgerEntry(
@@ -2286,6 +2397,11 @@ class LedgerEntry {
     createdAt: DateTime.parse(json['createdAt'] as String),
     fixedDay: (json['fixedDay'] as num?)?.toInt(),
     assetId: json['assetId']?.toString(),
+    sourceNotification: json['sourceNotification'] is Map
+        ? WalletKeeperNotificationSource.fromJson(
+            Map<String, dynamic>.from(json['sourceNotification'] as Map),
+          )
+        : null,
   );
 }
 

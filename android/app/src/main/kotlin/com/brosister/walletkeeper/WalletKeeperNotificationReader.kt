@@ -46,6 +46,7 @@ object WalletKeeperNotificationReader {
         return mapOf(
             "id" to buildNotificationId(sbn),
             "address" to packageName,
+            "appName" to resolveApplicationLabel(context, packageName),
             "body" to body,
             "titleHint" to title,
             "textBody" to textBody,
@@ -86,6 +87,7 @@ object WalletKeeperNotificationReader {
         val json = JSONObject()
             .put("id", id)
             .put("address", message["address"] as? String ?: "")
+            .put("appName", message["appName"] as? String ?: "")
             .put("body", message["body"] as? String ?: "")
             .put("titleHint", message["titleHint"] as? String ?: "")
             .put("textBody", message["textBody"] as? String ?: "")
@@ -106,6 +108,7 @@ object WalletKeeperNotificationReader {
                 mapOf(
                     "id" to item.optString("id"),
                     "address" to item.optString("address"),
+                    "appName" to item.optString("appName"),
                     "body" to item.optString("body"),
                     "titleHint" to item.optString("titleHint"),
                     "textBody" to item.optString("textBody"),
@@ -119,6 +122,15 @@ object WalletKeeperNotificationReader {
 
     private fun buildNotificationId(sbn: StatusBarNotification): String {
         return "app_noti_${sbn.packageName}_${sbn.id}_${sbn.postTime}"
+    }
+
+    private fun resolveApplicationLabel(context: Context, packageName: String): String {
+        return try {
+            val applicationInfo = context.packageManager.getApplicationInfo(packageName, 0)
+            context.packageManager.getApplicationLabel(applicationInfo).toString().trim()
+        } catch (_: Exception) {
+            packageName
+        }
     }
 
     private fun buildTitle(extras: Bundle?): String? {

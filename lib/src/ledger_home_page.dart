@@ -22,60 +22,70 @@ class _ShellRoute {
       existing = null,
       smsDraft = null,
       inquiry = null,
-      assetId = null;
+      assetId = null,
+      initialDate = null;
   const _ShellRoute.smsInbox()
     : kind = _ShellRouteKind.smsInbox,
       existing = null,
       smsDraft = null,
       inquiry = null,
-      assetId = null;
+      assetId = null,
+      initialDate = null;
   const _ShellRoute.smsSettings()
     : kind = _ShellRouteKind.smsSettings,
       existing = null,
       smsDraft = null,
       inquiry = null,
-      assetId = null;
+      assetId = null,
+      initialDate = null;
   const _ShellRoute.settingsProfile()
     : kind = _ShellRouteKind.settingsProfile,
       existing = null,
       smsDraft = null,
       inquiry = null,
-      assetId = null;
+      assetId = null,
+      initialDate = null;
   const _ShellRoute.settingsInquiryList()
     : kind = _ShellRouteKind.settingsInquiryList,
       existing = null,
       smsDraft = null,
       inquiry = null,
-      assetId = null;
+      assetId = null,
+      initialDate = null;
   const _ShellRoute.settingsInquiryDetail({required this.inquiry})
     : kind = _ShellRouteKind.settingsInquiryDetail,
       existing = null,
       smsDraft = null,
-      assetId = null;
+      assetId = null,
+      initialDate = null;
   const _ShellRoute.settingsInquiryCompose()
     : kind = _ShellRouteKind.settingsInquiryCompose,
       existing = null,
       smsDraft = null,
       inquiry = null,
-      assetId = null;
+      assetId = null,
+      initialDate = null;
   const _ShellRoute.settingsTerms()
     : kind = _ShellRouteKind.settingsTerms,
       existing = null,
       smsDraft = null,
       inquiry = null,
-      assetId = null;
+      assetId = null,
+      initialDate = null;
   const _ShellRoute.assetUpcomingHistory()
     : kind = _ShellRouteKind.assetUpcomingHistory,
       existing = null,
       smsDraft = null,
       inquiry = null,
-      assetId = null;
+      assetId = null,
+      initialDate = null;
   const _ShellRoute.assetTransactionHistory({this.assetId})
     : kind = _ShellRouteKind.assetTransactionHistory,
       existing = null,
       smsDraft = null,
-      inquiry = null;
-  const _ShellRoute.editor({this.existing, this.smsDraft})
+      inquiry = null,
+      initialDate = null;
+  const _ShellRoute.editor({this.existing, this.smsDraft, this.initialDate})
     : kind = _ShellRouteKind.editor,
       inquiry = null,
       assetId = null;
@@ -85,6 +95,7 @@ class _ShellRoute {
   final WalletKeeperSmsDraft? smsDraft;
   final WalletKeeperInquiry? inquiry;
   final String? assetId;
+  final DateTime? initialDate;
 }
 
 class LedgerHomePage extends StatefulWidget {
@@ -156,6 +167,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
   bool _financialAppNotificationEnabled = false;
   int _selectedOverviewTab = 0;
   int _overviewResetNonce = 0;
+  DateTime? _selectedLedgerDate;
   double _bottomBannerHeight = 0;
   final List<_ShellRoute> _routeStack = [const _ShellRoute.root()];
   final GlobalKey<_EntryEditorPageState> _editorPageKey =
@@ -973,13 +985,21 @@ class _LedgerHomePageState extends State<LedgerHomePage>
       ..add(const _ShellRoute.root());
   }
 
-  void _openComposer({LedgerEntry? existing, WalletKeeperSmsDraft? smsDraft}) {
+  void _openComposer({
+    LedgerEntry? existing,
+    WalletKeeperSmsDraft? smsDraft,
+    DateTime? initialDate,
+  }) {
     if (_currentRoute.kind == _ShellRouteKind.editor) {
       return;
     }
     setState(() {
       _routeStack.add(
-        _ShellRoute.editor(existing: existing, smsDraft: smsDraft),
+        _ShellRoute.editor(
+          existing: existing,
+          smsDraft: smsDraft,
+          initialDate: initialDate,
+        ),
       );
     });
   }
@@ -1362,6 +1382,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
         if (shouldResetOverview) {
           _selectedOverviewTab = 0;
           _overviewResetNonce++;
+          _selectedLedgerDate = null;
         }
       });
       return;
@@ -1382,6 +1403,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
         if (shouldResetOverview) {
           _selectedOverviewTab = 0;
           _overviewResetNonce++;
+          _selectedLedgerDate = null;
         }
       });
       return;
@@ -1396,6 +1418,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
       if (shouldResetOverview) {
         _selectedOverviewTab = 0;
         _overviewResetNonce++;
+        _selectedLedgerDate = null;
       }
     });
   }
@@ -1435,6 +1458,9 @@ class _LedgerHomePageState extends State<LedgerHomePage>
             selectedTab: _selectedOverviewTab,
             onSelectedTabChanged: (index) =>
                 setState(() => _selectedOverviewTab = index),
+            onSelectedDateChanged: (date) {
+              _selectedLedgerDate = date;
+            },
             onEdit: ({existing}) => _showEntryEditorSheet(existing: existing),
             onOpenBudgetSettings: ({required month}) =>
                 _showBudgetSettingsSheet(month: month),
@@ -1622,6 +1648,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
           key: _editorPageKey,
           existing: _currentRoute.existing,
           smsDraft: _currentRoute.smsDraft,
+          initialDate: _currentRoute.initialDate,
           categorySuggestions: _categorySuggestions,
           assets: _assets,
           featureAccess: widget.featureAccess,
@@ -1684,7 +1711,8 @@ class _LedgerHomePageState extends State<LedgerHomePage>
                         children: [
                           WalletKeeperBottomBar(
                             selectedIndex: _selectedTab,
-                            onAdd: () => _openComposer(),
+                            onAdd: () =>
+                                _openComposer(initialDate: _selectedLedgerDate),
                             onSelected: _closeEditorAndSelectTab,
                           ),
                           WalletKeeperAdBannerBar(

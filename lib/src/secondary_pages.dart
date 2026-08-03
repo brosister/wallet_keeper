@@ -1659,10 +1659,12 @@ class _NotificationSourceAppIcon extends StatelessWidget {
   const _NotificationSourceAppIcon({
     required this.packageName,
     required this.iconBase64,
+    this.size = 18,
   });
 
   final String packageName;
   final String iconBase64;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
@@ -1676,7 +1678,7 @@ class _NotificationSourceAppIcon extends StatelessWidget {
     }
     final normalizedPackage = packageName.trim();
     if (normalizedPackage.isEmpty) {
-      return const SizedBox.shrink();
+      return _buildFallback();
     }
     final future = _walletKeeperAppIconFutureCache.putIfAbsent(
       normalizedPackage,
@@ -1688,7 +1690,7 @@ class _NotificationSourceAppIcon extends StatelessWidget {
       builder: (context, snapshot) {
         final bytes = snapshot.data;
         if (bytes == null || bytes.isEmpty) {
-          return const SizedBox.shrink();
+          return _buildFallback();
         }
         return _buildIcon(bytes);
       },
@@ -1697,14 +1699,33 @@ class _NotificationSourceAppIcon extends StatelessWidget {
 
   Widget _buildIcon(Uint8List bytes) {
     return Container(
-      width: 18,
-      height: 18,
+      width: size,
+      height: size,
       clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(borderRadius: BorderRadius.circular(4)),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(size * 0.22),
+      ),
       child: Image.memory(
         bytes,
         fit: BoxFit.cover,
         filterQuality: FilterQuality.medium,
+      ),
+    );
+  }
+
+  Widget _buildFallback() {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFE4E1),
+        borderRadius: BorderRadius.circular(size * 0.22),
+      ),
+      alignment: Alignment.center,
+      child: Icon(
+        Icons.account_balance_wallet_rounded,
+        size: size * 0.52,
+        color: const Color(0xFFE76158),
       ),
     );
   }
@@ -1724,6 +1745,138 @@ class _NotificationSourceSmsIcon extends StatelessWidget {
       ),
       alignment: Alignment.center,
       child: const Icon(Icons.sms_outlined, size: 14, color: Color(0xFF4B8EFF)),
+    );
+  }
+}
+
+class _EntrySourceNotificationCard extends StatelessWidget {
+  const _EntrySourceNotificationCard({required this.source});
+
+  final WalletKeeperNotificationSource source;
+
+  @override
+  Widget build(BuildContext context) {
+    final isAppNotification = source.sourceType == 'app_notification';
+    final appName = source.appName.trim().isNotEmpty
+        ? source.appName.trim()
+        : isAppNotification
+        ? source.address.trim()
+        : '문자';
+    final title = source.title.trim().isNotEmpty
+        ? source.title.trim()
+        : isAppNotification
+        ? appName
+        : source.address.trim();
+    final body = source.body.trim();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.only(left: 2, bottom: 8),
+          child: Text(
+            '감지된 원본 알림',
+            style: TextStyle(
+              color: Color(0xFF7B8491),
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(14, 14, 16, 15),
+          decoration: BoxDecoration(
+            color: const Color(0xFFEEF1F4),
+            borderRadius: BorderRadius.circular(22),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (isAppNotification)
+                _NotificationSourceAppIcon(
+                  packageName: source.address,
+                  iconBase64: source.appIconBase64,
+                  size: 44,
+                )
+              else
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFDCEBFF),
+                    borderRadius: BorderRadius.circular(13),
+                  ),
+                  alignment: Alignment.center,
+                  child: const Icon(
+                    Icons.sms_rounded,
+                    size: 23,
+                    color: Color(0xFF4B8EFF),
+                  ),
+                ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            appName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Color(0xFF30353C),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          DateFormat(
+                            'M.d a h:mm',
+                            'ko_KR',
+                          ).format(source.receivedAt),
+                          style: const TextStyle(
+                            color: Color(0xFF8C949E),
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (title.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          color: Color(0xFF1F2329),
+                          fontSize: 14,
+                          height: 1.3,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ],
+                    if (body.isNotEmpty && body != title) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        body,
+                        style: const TextStyle(
+                          color: Color(0xFF555D68),
+                          fontSize: 12,
+                          height: 1.4,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1819,8 +1972,8 @@ class _SmsInboxPageState extends State<SmsInboxPage> {
   }
 
   Future<void> _showImportDialog() async {
-    final controller = TextEditingController(text: '60');
-    final confirmed = await showDialog<bool>(
+    var selectedDays = 60;
+    final days = await showDialog<int>(
       context: context,
       builder: (context) {
         return AlertDialog(
@@ -1857,9 +2010,13 @@ class _SmsInboxPageState extends State<SmsInboxPage> {
                 children: [
                   SizedBox(
                     width: 96,
-                    child: TextField(
-                      controller: controller,
+                    child: TextFormField(
+                      initialValue: '60',
                       keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      onChanged: (value) {
+                        selectedDays = int.tryParse(value.trim()) ?? 60;
+                      },
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         color: Color(0xFF14171C),
@@ -1882,14 +2039,16 @@ class _SmsInboxPageState extends State<SmsInboxPage> {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  const Padding(
-                    padding: EdgeInsets.only(bottom: 8),
-                    child: Text(
-                      '일 이내의 문자를 가져옵니다.',
-                      style: TextStyle(
-                        color: Color(0xFF6F7782),
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
+                  const Expanded(
+                    child: Padding(
+                      padding: EdgeInsets.only(bottom: 8),
+                      child: Text(
+                        '일 이내의 문자를 가져옵니다.',
+                        style: TextStyle(
+                          color: Color(0xFF6F7782),
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                   ),
@@ -1898,29 +2057,28 @@ class _SmsInboxPageState extends State<SmsInboxPage> {
             ],
           ),
           actions: [
-            Expanded(
-              child: TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: const Text(
-                  '아니오',
-                  style: TextStyle(
-                    color: Color(0xFF5C6470),
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                  ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text(
+                '취소',
+                style: TextStyle(
+                  color: Color(0xFF5C6470),
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ),
-            Expanded(
-              child: TextButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                child: const Text(
-                  '예',
-                  style: TextStyle(
-                    color: Color(0xFFFF6A5F),
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                  ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(selectedDays),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFFF6A5F),
+                foregroundColor: Colors.white,
+              ),
+              child: const Text(
+                '가져오기',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
             ),
@@ -1928,23 +2086,54 @@ class _SmsInboxPageState extends State<SmsInboxPage> {
         );
       },
     );
-    if (confirmed != true) return;
-    final days = int.tryParse(controller.text.trim()) ?? 60;
+    if (days == null || !mounted) return;
     setState(() => _importing = true);
-    await widget.onImportRecent(days.clamp(1, 365));
-    if (!mounted) return;
-    setState(() => _importing = false);
+    try {
+      await widget.onImportRecent(days.clamp(1, 365));
+      if (mounted) await showAppToast('문자 가져오기를 완료했습니다.');
+    } on PlatformException catch (error) {
+      if (error.code == 'permission_denied' ||
+          error.code == 'PERMISSION_DENIED') {
+        await widget.onRequestSmsAccess();
+        if (mounted) {
+          await showAppToast('문자 권한을 허용한 뒤 다시 가져와주세요.');
+        }
+      } else if (mounted) {
+        await showAppToast('문자를 가져오지 못했습니다.');
+      }
+    } catch (_) {
+      if (mounted) await showAppToast('문자를 가져오지 못했습니다.');
+    } finally {
+      if (mounted) setState(() => _importing = false);
+    }
+  }
+
+  Widget _buildPasteSmsButton() {
+    return OutlinedButton(
+      onPressed: widget.onPasteFromClipboard,
+      style: OutlinedButton.styleFrom(
+        foregroundColor: const Color(0xFFFF6A5F),
+        side: const BorderSide(color: Color(0xFFFFD2CD)),
+        minimumSize: const Size.fromHeight(48),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      ),
+      child: const Text(
+        '문자 붙여넣기',
+        style: TextStyle(fontWeight: FontWeight.w800),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final isIos = Theme.of(context).platform == TargetPlatform.iOS;
     final showSmsSettingsEntry = Platform.isAndroid;
     final bottomInset = bottomOverlayHeightOf(context);
     final actionBarBottomInset = math.max(0.0, bottomInset - 38);
     final applySystemBottomSafeArea = bottomInset == 0;
     final actionBarBottomPadding = bottomInset > 0 ? 22.0 : 12.0;
-    final inboxGuideText = Platform.isIOS
-        ? 'iOS에서는 자동 감지 없이, 문자 가져오기 또는 문자 붙여넣기로 금융 내역을 직접 추가할 수 있습니다.\n왼쪽으로 밀면 삭제, 오른쪽으로 끝까지 밀면 바로 자동입력 저장됩니다.'
+    final inboxGuideText = isIos
+        ? 'iOS에서는 문자 자동 감지와 문자 가져오기를 지원하지 않습니다. 복사한 금융 문자를 문자 붙여넣기로 직접 추가할 수 있습니다.\n왼쪽으로 밀면 삭제, 오른쪽으로 끝까지 밀면 바로 자동입력 저장됩니다.'
         : 'SMS, MMS, 금융앱 알림 중 금융 내역 관련 내용이 자동 감지되어 문자함에 담깁니다.\n문자 가져오기는 휴대폰에 저장된 최근 문자를 수동으로 불러옵니다. 왼쪽으로 밀면 삭제, 오른쪽으로 끝까지 밀면 바로 자동입력 저장됩니다.';
     final allSelected =
         _visibleDrafts.isNotEmpty &&
@@ -2377,6 +2566,11 @@ class _SmsInboxPageState extends State<SmsInboxPage> {
                         ),
                         child: const Text('선택삭제'),
                       )
+                    : isIos
+                    ? SizedBox(
+                        width: double.infinity,
+                        child: _buildPasteSmsButton(),
+                      )
                     : Row(
                         children: [
                           Expanded(
@@ -2393,25 +2587,7 @@ class _SmsInboxPageState extends State<SmsInboxPage> {
                             ),
                           ),
                           const SizedBox(width: 10),
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: widget.onPasteFromClipboard,
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: const Color(0xFFFF6A5F),
-                                side: const BorderSide(
-                                  color: Color(0xFFFFD2CD),
-                                ),
-                                minimumSize: const Size.fromHeight(48),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                              ),
-                              child: const Text(
-                                '문자 붙여넣기',
-                                style: TextStyle(fontWeight: FontWeight.w800),
-                              ),
-                            ),
-                          ),
+                          Expanded(child: _buildPasteSmsButton()),
                         ],
                       ),
               ),
@@ -2590,6 +2766,7 @@ class EntryEditorPage extends StatefulWidget {
     super.key,
     this.existing,
     this.smsDraft,
+    this.initialDate,
     required this.categorySuggestions,
     required this.assets,
     required this.featureAccess,
@@ -2603,6 +2780,7 @@ class EntryEditorPage extends StatefulWidget {
 
   final LedgerEntry? existing;
   final WalletKeeperSmsDraft? smsDraft;
+  final DateTime? initialDate;
   final List<String> categorySuggestions;
   final List<WalletKeeperAsset> assets;
   final WalletKeeperFeatureAccess featureAccess;
@@ -2720,6 +2898,10 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
 
   bool get _fromSmsDraft => widget.smsDraft != null;
 
+  WalletKeeperNotificationSource? get _sourceNotification =>
+      widget.existing?.sourceNotification ??
+      widget.smsDraft?.toNotificationSource();
+
   @override
   void initState() {
     super.initState();
@@ -2783,7 +2965,12 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
         : _type == EntryType.income
         ? _EntryEditorMode.income
         : _EntryEditorMode.expense;
-    _date = existing?.date ?? DateTime.now();
+    if (existing != null) {
+      _date = existing.date;
+    } else {
+      final initialDate = widget.initialDate ?? DateTime.now();
+      _date = DateTime(initialDate.year, initialDate.month, initialDate.day);
+    }
   }
 
   void _setCategoryText(String value, {bool editedByUser = false}) {
@@ -2982,7 +3169,7 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
     return shouldLeave == true;
   }
 
-  Future<void> _pickDateTime() async {
+  Future<void> _pickDate() async {
     if (_isFixedMode) {
       await _pickFixedDay();
       return;
@@ -3000,22 +3187,39 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
       ),
     );
     if (pickedDate == null || !mounted) return;
-    final pickedTime = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.fromDateTime(_date),
-      builder: (context, child) => Theme(
-        data: Theme.of(context).copyWith(
-          colorScheme: const ColorScheme.light(primary: Color(0xFFFF6A5F)),
-        ),
-        child: child!,
-      ),
-    );
-    if (pickedTime == null) return;
     setState(() {
       _date = DateTime(
         pickedDate.year,
         pickedDate.month,
         pickedDate.day,
+        _date.hour,
+        _date.minute,
+      );
+    });
+  }
+
+  Future<void> _pickTime() async {
+    final now = DateTime.now();
+    final pickedTime = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: now.hour, minute: now.minute),
+      builder: (context, child) => Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: const ColorScheme.light(
+            primary: Color(0xFFFF6A5F),
+            surface: Colors.white,
+          ),
+          dialogTheme: const DialogThemeData(backgroundColor: Colors.white),
+        ),
+        child: child!,
+      ),
+    );
+    if (pickedTime == null || !mounted) return;
+    setState(() {
+      _date = DateTime(
+        _date.year,
+        _date.month,
+        _date.day,
         pickedTime.hour,
         pickedTime.minute,
       );
@@ -3140,6 +3344,9 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
       createdAt: existing?.createdAt ?? DateTime.now(),
       fixedDay: fixedDay,
       assetId: _assetId,
+      sourceNotification:
+          existing?.sourceNotification ??
+          widget.smsDraft?.toNotificationSource(),
     );
     await widget.onSave(entry);
     if (!mounted) return;
@@ -3443,7 +3650,7 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
                 _EditorRow(
                   label: _isFixedMode ? '반복일' : '날짜',
                   child: InkWell(
-                    onTap: _pickDateTime,
+                    onTap: _pickDate,
                     child: Container(
                       padding: const EdgeInsets.only(bottom: 10, top: 6),
                       decoration: const BoxDecoration(
@@ -3457,7 +3664,7 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
                             _isFixedMode
                                 ? '매월 ${_fixedDay ?? _date.day}일'
                                 : DateFormat(
-                                    'yy/M/d (E)  a h:mm',
+                                    'yy/M/d (E)',
                                     'ko_KR',
                                   ).format(_date),
                             style: const TextStyle(
@@ -3469,6 +3676,39 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
                           const Spacer(),
                           const Icon(
                             Icons.calendar_month_rounded,
+                            color: Color(0xFF98A1AD),
+                            size: 18,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _EditorRow(
+                  label: '시간',
+                  child: InkWell(
+                    onTap: _pickTime,
+                    child: Container(
+                      padding: const EdgeInsets.only(bottom: 10, top: 6),
+                      decoration: const BoxDecoration(
+                        border: Border(
+                          bottom: BorderSide(color: Color(0xFFE1E6EE)),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Text(
+                            DateFormat('HH:mm').format(_date),
+                            style: const TextStyle(
+                              color: Color(0xFF20242B),
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const Spacer(),
+                          const Icon(
+                            Icons.schedule_rounded,
                             color: Color(0xFF98A1AD),
                             size: 18,
                           ),
@@ -3838,6 +4078,12 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
                     ],
                   ),
                 ),
+                if (_sourceNotification != null) ...[
+                  const SizedBox(height: 14),
+                  _EntrySourceNotificationCard(
+                    source: _sourceNotification!,
+                  ),
+                ],
               ],
             ),
           ),
@@ -5831,6 +6077,7 @@ class AssetTransactionHistoryPage extends StatelessWidget {
       ),
     );
   }
+
 }
 
 class _AllAssetTransactionSummary extends StatelessWidget {

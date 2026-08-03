@@ -9,6 +9,7 @@ class OverviewPage extends StatefulWidget {
     required this.smsDraftCount,
     required this.selectedTab,
     required this.onSelectedTabChanged,
+    required this.onSelectedDateChanged,
     required this.onEdit,
     required this.onOpenBudgetSettings,
     required this.onOpenSmsPage,
@@ -21,6 +22,7 @@ class OverviewPage extends StatefulWidget {
   final int smsDraftCount;
   final int selectedTab;
   final ValueChanged<int> onSelectedTabChanged;
+  final ValueChanged<DateTime?> onSelectedDateChanged;
   final Future<void> Function({LedgerEntry? existing}) onEdit;
   final Future<void> Function({required DateTime month}) onOpenBudgetSettings;
   final VoidCallback onOpenSmsPage;
@@ -189,6 +191,7 @@ class _OverviewPageState extends State<OverviewPage> {
             groups: grouped,
             onEdit: widget.onEdit,
             onDelete: widget.onDelete,
+            onSelectedDateChanged: widget.onSelectedDateChanged,
             month: month,
           )
         else if (widget.selectedTab == 1)
@@ -334,10 +337,17 @@ class _OverviewPageState extends State<OverviewPage> {
                 : PageView.builder(
                     controller: _monthPageController,
                     onPageChanged: (pageIndex) {
+                      final month = _monthForPage(pageIndex);
                       setState(() {
                         _currentMonthPage = pageIndex;
-                        _selectedMonth = _monthForPage(pageIndex);
+                        _selectedMonth = month;
                       });
+                      final now = DateTime.now();
+                      widget.onSelectedDateChanged(
+                        month.year == now.year && month.month == now.month
+                            ? DateTime(now.year, now.month, now.day)
+                            : null,
+                      );
                     },
                     itemBuilder: (context, pageIndex) {
                       return _buildMonthPage(
@@ -972,12 +982,14 @@ class _CalendarLedgerTab extends StatefulWidget {
     required this.groups,
     required this.onEdit,
     required this.onDelete,
+    required this.onSelectedDateChanged,
     required this.month,
   });
 
   final Map<DateTime, List<LedgerEntry>> groups;
   final Future<void> Function({LedgerEntry? existing}) onEdit;
   final Future<void> Function(LedgerEntry entry) onDelete;
+  final ValueChanged<DateTime?> onSelectedDateChanged;
   final DateTime month;
 
   @override
@@ -1093,6 +1105,7 @@ class _CalendarLedgerTabState extends State<_CalendarLedgerTab> {
                   setState(() {
                     _selectedDay = day;
                   });
+                  widget.onSelectedDateChanged(day);
                 },
                 child: Container(
                   color: Colors.white,
