@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Handler
 import android.os.Looper
+import java.util.concurrent.atomic.AtomicInteger
 
 class MmsReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -23,15 +24,16 @@ class MmsReceiver : BroadcastReceiver() {
                         ?: return@mapNotNull null
                     item to parsed
                 }
-                val latest = financialRecent.firstOrNull() ?: return@postDelayed
-                recent.forEach {
-                    val body = it["body"] as? String ?: return@forEach
-                    if (
-                        WalletKeeperNativeFinancialMessageParser.parse(context, body) != null &&
-                        MmsReader.shouldEnqueueRealtimeMms(context, it)
-                    ) {
-                        MmsReader.storePendingMms(context, it)
-                    }
+                val latest = financialRecent.firstOrNull()
+                if (latest == null) {
+                    pendingResult.finish()
+                    return@postDelayed
+                }
+                val realtime = financialRecent.filter { (item, _) ->
+                    MmsReader.shouldEnqueueRealtimeMms(context, item)
+                }
+                realtime.forEach { (item, _) ->
+                    MmsReader.storePendingMms(context, item)
                 }
                 val timestampMillis = (latest.first["dateMillis"] as? Long) ?: now
                 if (WalletKeeperNativeNotifier.shouldShowFinancialNotification(context)) {
@@ -44,7 +46,26 @@ class MmsReceiver : BroadcastReceiver() {
                         timestampMillis = timestampMillis,
                     )
                 }
-            } finally {
+                if (realtime.isEmpty()) {
+                    pendingResult.finish()
+                    return@postDelayed
+                }
+                val remaining = AtomicInteger(realtime.size)
+                realtime.forEach { (item, parsed) ->
+                    WalletKeeperNativeCloudSync.enqueueDraft(
+                        context = context,
+                        payload = item,
+                        parsed = parsed,
+                        sourceType = "mms",
+                        notificationBody = item["body"] as? String ?: "",
+                        onComplete = {
+                            if (remaining.decrementAndGet() == 0) {
+                                pendingResult.finish()
+                            }
+                        },
+                    )
+                }
+            } catch (_: Exception) {
                 pendingResult.finish()
             }
         }, 1500L)

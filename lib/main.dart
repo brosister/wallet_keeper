@@ -9,6 +9,7 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/services.dart';
@@ -57,6 +58,7 @@ const _processedSmsIdsKey = 'wallet_keeper_processed_sms_ids_v1';
 const _smsInboxDraftsKey = 'wallet_keeper_sms_inbox_drafts_v1';
 const _smsReceiveEnabledKey = 'wallet_keeper_sms_receive_enabled_v1';
 const _smsAutoInputEnabledKey = 'wallet_keeper_sms_auto_input_enabled_v1';
+const _smsAutoInputAssetIdKey = 'wallet_keeper_sms_auto_input_asset_id_v1';
 const _smsShowNotificationKey = 'wallet_keeper_sms_show_notification_v1';
 const _smsHeuristicReportEnabledKey =
     'wallet_keeper_sms_heuristic_report_enabled_v1';
@@ -202,9 +204,49 @@ Future<void> walletKeeperBackgroundMessageHandler(SmsMessage message) async {
       .handleIncomingMessage(
         message,
         autoSaveToLedger: settings.autoInputEnabled,
+        preferredAssetId: settings.autoInputAssetId,
       );
-  if (result == null || !settings.showNotification) return;
+  if (result == null) return;
+  await _syncWalletKeeperBackgroundData();
+  if (!settings.showNotification) return;
   await WalletKeeperNotificationService.showSmsDetectedNotification(result);
+}
+
+Future<void> _syncWalletKeeperBackgroundData() async {
+  try {
+    final accountRepository = WalletKeeperAccountRepository();
+    final session = await accountRepository.loadSession();
+    if (session == null) return;
+    final ledgerRepository = LedgerRepository();
+    final entries = await ledgerRepository.load();
+    final result = await WalletKeeperCloudSyncRepository()
+        .syncForSession(
+          session: session,
+          entries: entries,
+          memos: await WalletKeeperMemoRepository().load(),
+          budgets: await WalletKeeperBudgetRepository().load(),
+          assets: await WalletKeeperAssetRepository().load(),
+          smsDrafts: await WalletKeeperSmsAutomationRepository()
+              .loadInboxDrafts(),
+        )
+        .timeout(const Duration(seconds: 20));
+    if (result.uploadedAttachmentUrls.isEmpty) return;
+    final syncedEntries = entries
+        .map(
+          (entry) => entry.copyWith(
+            attachmentPaths: entry.attachmentPaths
+                .map(
+                  (path) => result.uploadedAttachmentUrls[path] ?? path,
+                )
+                .toList(),
+          ),
+        )
+        .toList();
+    await ledgerRepository.save(syncedEntries);
+  } catch (error, stackTrace) {
+    debugPrint('Wallet Keeper background cloud sync failed: $error');
+    debugPrintStack(stackTrace: stackTrace);
+  }
 }
 
 Future<void> main() async {
@@ -233,6 +275,9 @@ class WalletKeeperApp extends StatelessWidget {
         return MaterialApp(
           debugShowCheckedModeBanner: false,
           title: 'Wallet Keeper',
+          builder: (context, child) => WalletKeeperKeyboardDismissOverlay(
+            child: child ?? const SizedBox.shrink(),
+          ),
           locale: walletKeeperLocaleOverrideOf(appSettings),
           supportedLocales: const [
             Locale('ko'),
@@ -319,6 +364,70 @@ class WalletKeeperApp extends StatelessWidget {
           home: const WalletKeeperStartupShell(),
         );
       },
+    );
+  }
+}
+
+class WalletKeeperKeyboardDismissOverlay extends StatelessWidget {
+  const WalletKeeperKeyboardDismissOverlay({
+    super.key,
+    required this.child,
+  });
+
+  final Widget child;
+
+  void _dismissKeyboard() {
+    FocusManager.instance.primaryFocus?.unfocus();
+    SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+    final showDismissButton =
+        Theme.of(context).platform == TargetPlatform.iOS && keyboardInset > 0;
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        child,
+        if (showDismissButton)
+          Positioned(
+            right: 12,
+            bottom: keyboardInset + 8,
+            child: Material(
+              color: const Color(0xFF30353C),
+              elevation: 4,
+              borderRadius: BorderRadius.circular(99),
+              child: InkWell(
+                onTap: _dismissKeyboard,
+                borderRadius: BorderRadius.circular(99),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.keyboard_hide_rounded,
+                        size: 17,
+                        color: Colors.white,
+                      ),
+                      SizedBox(width: 5),
+                      Text(
+                        '내리기',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

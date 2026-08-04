@@ -14,6 +14,18 @@ class WalletKeeperNotificationListenerService : NotificationListenerService() {
             return
         }
         WalletKeeperNotificationReader.storePendingNotification(this, payload)
+        WalletKeeperNativeCloudSync.enqueueDraft(
+            context = this,
+            payload = payload,
+            parsed = NativeFinancialMessage(
+                title = payload["title"] as? String ?: "금융 알림",
+                amountText = payload["amountText"] as? String ?: "",
+            ),
+            sourceType = "app_notification",
+            sourceAppName = payload["appName"] as? String ?: "",
+            notificationTitle = payload["titleHint"] as? String ?: "",
+            notificationBody = payload["textBody"] as? String ?: "",
+        )
         if (WalletKeeperNativeNotifier.shouldShowFinancialNotification(this)) {
             WalletKeeperNativeNotifier.showFinancialNotification(
                 context = this,

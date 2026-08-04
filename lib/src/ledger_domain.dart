@@ -58,6 +58,7 @@ class WalletKeeperSmsSettings {
     required this.showNotification,
     required this.shareHeuristicReports,
     required this.importWindowDays,
+    this.autoInputAssetId,
   });
 
   final bool smsReceiveEnabled;
@@ -65,6 +66,7 @@ class WalletKeeperSmsSettings {
   final bool showNotification;
   final bool shareHeuristicReports;
   final int importWindowDays;
+  final String? autoInputAssetId;
 
   WalletKeeperSmsSettings copyWith({
     bool? smsReceiveEnabled,
@@ -72,6 +74,8 @@ class WalletKeeperSmsSettings {
     bool? showNotification,
     bool? shareHeuristicReports,
     int? importWindowDays,
+    String? autoInputAssetId,
+    bool clearAutoInputAssetId = false,
   }) {
     return WalletKeeperSmsSettings(
       smsReceiveEnabled: smsReceiveEnabled ?? this.smsReceiveEnabled,
@@ -80,6 +84,9 @@ class WalletKeeperSmsSettings {
       shareHeuristicReports:
           shareHeuristicReports ?? this.shareHeuristicReports,
       importWindowDays: importWindowDays ?? this.importWindowDays,
+      autoInputAssetId: clearAutoInputAssetId
+          ? null
+          : autoInputAssetId ?? this.autoInputAssetId,
     );
   }
 }
@@ -407,6 +414,7 @@ class WalletKeeperSmsSettingsRepository {
       shareHeuristicReports:
           prefs.getBool(_smsHeuristicReportEnabledKey) ?? false,
       importWindowDays: prefs.getInt(_smsImportWindowDaysKey) ?? 60,
+      autoInputAssetId: prefs.getString(_smsAutoInputAssetIdKey),
     );
   }
 
@@ -420,6 +428,12 @@ class WalletKeeperSmsSettingsRepository {
       settings.shareHeuristicReports,
     );
     await prefs.setInt(_smsImportWindowDaysKey, settings.importWindowDays);
+    final autoInputAssetId = settings.autoInputAssetId?.trim() ?? '';
+    if (autoInputAssetId.isEmpty) {
+      await prefs.remove(_smsAutoInputAssetIdKey);
+    } else {
+      await prefs.setString(_smsAutoInputAssetIdKey, autoInputAssetId);
+    }
   }
 }
 
@@ -900,6 +914,7 @@ class WalletKeeperSmsAutomationRepository {
   Future<WalletKeeperSmsHandledResult?> handleIncomingMessage(
     SmsMessage message, {
     bool autoSaveToLedger = false,
+    String? preferredAssetId,
   }) async {
     final analysis = WalletKeeperSmsParser.parse(message);
     if (analysis == null) return null;
@@ -907,12 +922,14 @@ class WalletKeeperSmsAutomationRepository {
       draft: analysis.toDraft(),
       analysis: analysis,
       autoSaveToLedger: autoSaveToLedger,
+      preferredAssetId: preferredAssetId,
     );
   }
 
   Future<WalletKeeperSmsHandledResult?> handleIncomingDraft(
     WalletKeeperSmsDraft draft, {
     bool autoSaveToLedger = false,
+    String? preferredAssetId,
   }) async {
     final analysis = WalletKeeperParsedMessage(
       type: draft.type,
@@ -934,6 +951,7 @@ class WalletKeeperSmsAutomationRepository {
       draft: draft,
       analysis: analysis,
       autoSaveToLedger: autoSaveToLedger,
+      preferredAssetId: preferredAssetId,
     );
   }
 
@@ -941,6 +959,7 @@ class WalletKeeperSmsAutomationRepository {
     required WalletKeeperSmsDraft draft,
     required WalletKeeperParsedMessage analysis,
     required bool autoSaveToLedger,
+    String? preferredAssetId,
   }) async {
     if (await _isProcessed(draft.id)) return null;
     if (autoSaveToLedger) {
@@ -948,17 +967,34 @@ class WalletKeeperSmsAutomationRepository {
       if (entries.any(
         (entry) => _entryIdentityKey(entry) == _draftIdentityKey(draft),
       )) {
+        await removeDraft(draft.id);
         await _markProcessed(draft.id);
         return null;
       }
       final assets = await _assetRepository.load();
-      final detectedAsset = detectWalletKeeperAsset(draft, assets);
+      WalletKeeperAsset? detectedAsset;
+      final preferredId = preferredAssetId?.trim() ?? '';
+      if (preferredId.isNotEmpty) {
+        for (final asset in assets) {
+          if (asset.id == preferredId) {
+            detectedAsset = asset;
+            break;
+          }
+        }
+      }
+      detectedAsset ??= detectWalletKeeperAsset(draft, assets);
       final nextEntries = [
         ...entries,
         draft.toEntry(assetId: detectedAsset?.id),
       ]
         ..sort((a, b) => b.date.compareTo(a.date));
       await _ledgerRepository.save(nextEntries);
+      final inboxDrafts = await loadInboxDrafts();
+      if (inboxDrafts.any((item) => item.id == draft.id)) {
+        await _saveDrafts(
+          inboxDrafts.where((item) => item.id != draft.id).toList(),
+        );
+      }
       await _markProcessed(draft.id);
       unawaited(_reportClient.reportDetectedMessage(draft));
       return WalletKeeperSmsHandledResult(
@@ -1097,6 +1133,13 @@ class WalletKeeperSmsAutomationRepository {
       }
       final identityKey = _draftIdentityKey(draft);
       if (merged.containsKey(identityKey)) {
+        final existingDraft = merged[identityKey]!;
+        if (existingDraft.id == draft.id &&
+            existingDraft.matchedRule == 'native_financial_notification') {
+          merged[identityKey] = draft;
+          acceptedDrafts.add(draft);
+          continue;
+        }
         await _markProcessed(draft.id);
         continue;
       }
@@ -1111,6 +1154,16 @@ class WalletKeeperSmsAutomationRepository {
       unawaited(_reportClient.reportDetectedMessage(draft));
     }
     return next;
+  }
+
+  Future<void> replaceInboxDrafts(List<WalletKeeperSmsDraft> drafts) async {
+    final next = [...drafts]..sort((a, b) => b.date.compareTo(a.date));
+    await _saveDrafts(next);
+    for (final draft in next) {
+      if (draft.matchedRule != 'native_financial_notification') {
+        await _markProcessed(draft.id);
+      }
+    }
   }
 
   Future<void> removeDraft(String id) async {
@@ -2922,28 +2975,29 @@ class WalletKeeperSyncBundle {
     required this.entries,
     required this.memos,
     required this.budgets,
-    required this.smsSettings,
     this.assets = const [],
+    this.smsDrafts = const [],
   });
 
   final List<LedgerEntry> entries;
   final List<WalletKeeperMemo> memos;
   final List<WalletKeeperBudgetSetting> budgets;
-  final WalletKeeperSmsSettings smsSettings;
   final List<WalletKeeperAsset> assets;
+  final List<WalletKeeperSmsDraft> smsDrafts;
 
   bool get hasMeaningfulData =>
       entries.isNotEmpty ||
       memos.isNotEmpty ||
       budgets.isNotEmpty ||
-      assets.isNotEmpty;
+      assets.isNotEmpty ||
+      smsDrafts.isNotEmpty;
 
   Map<String, dynamic> toJson() => {
     'entries': entries.map((entry) => entry.toJson()).toList(),
     'memos': memos.map((memo) => memo.toJson()).toList(),
     'budgets': budgets.map((budget) => budget.toJson()).toList(),
-    'smsSettings': smsSettings.toJson(),
     'assets': assets.map((asset) => asset.toJson()).toList(),
+    'drafts': smsDrafts.map((draft) => draft.toJson()).toList(),
   };
 
   factory WalletKeeperSyncBundle.fromJson(Map<String, dynamic> json) {
@@ -2963,37 +3017,19 @@ class WalletKeeperSyncBundle {
         .cast<Map<String, dynamic>>()
         .map(WalletKeeperAsset.fromJson)
         .toList();
+    final smsDrafts = ((json['drafts'] as List?) ?? const [])
+        .cast<Map<String, dynamic>>()
+        .map(WalletKeeperSmsDraft.fromJson)
+        .toList();
     return WalletKeeperSyncBundle(
       entries: entries,
       memos: memos,
       budgets: budgets,
       assets: assets,
-      smsSettings: walletKeeperSmsSettingsFromJson(
-        (json['smsSettings'] as Map?)?.cast<String, dynamic>() ?? const {},
-      ),
+      smsDrafts: smsDrafts,
     );
   }
 }
-
-extension WalletKeeperSmsSettingsCodec on WalletKeeperSmsSettings {
-  Map<String, dynamic> toJson() => {
-    'smsReceiveEnabled': smsReceiveEnabled,
-    'autoInputEnabled': autoInputEnabled,
-    'showNotification': showNotification,
-    'shareHeuristicReports': shareHeuristicReports,
-    'importWindowDays': importWindowDays,
-  };
-}
-
-WalletKeeperSmsSettings walletKeeperSmsSettingsFromJson(
-  Map<String, dynamic> json,
-) => WalletKeeperSmsSettings(
-  smsReceiveEnabled: json['smsReceiveEnabled'] as bool? ?? true,
-  autoInputEnabled: json['autoInputEnabled'] as bool? ?? false,
-  showNotification: json['showNotification'] as bool? ?? true,
-  shareHeuristicReports: json['shareHeuristicReports'] as bool? ?? false,
-  importWindowDays: (json['importWindowDays'] as num?)?.toInt() ?? 60,
-);
 
 class WalletKeeperAccountRepository {
   static const _baseUrl = _walletKeeperAuthBaseUri;
@@ -3448,34 +3484,45 @@ class WalletKeeperCloudSyncRepository {
     return WalletKeeperSyncBundle.fromJson(savePayload);
   }
 
-  Future<void> sync({
+  Future<WalletKeeperCloudSyncResult> sync({
     required List<LedgerEntry> entries,
     required List<WalletKeeperMemo> memos,
     required List<WalletKeeperBudgetSetting> budgets,
     required List<WalletKeeperAsset> assets,
-    required WalletKeeperSmsSettings smsSettings,
+    required List<WalletKeeperSmsDraft> smsDrafts,
   }) async {
     final session =
         await _accountRepository.loadSession() ??
         await _accountRepository.bootstrapGuest();
-    await syncForSession(
+    return syncForSession(
       session: session,
       entries: entries,
       memos: memos,
       budgets: budgets,
       assets: assets,
-      smsSettings: smsSettings,
+      smsDrafts: smsDrafts,
     );
   }
 
-  Future<void> syncForSession({
+  Future<WalletKeeperCloudSyncResult> syncForSession({
     required WalletKeeperUserSession session,
     required List<LedgerEntry> entries,
     required List<WalletKeeperMemo> memos,
     required List<WalletKeeperBudgetSetting> budgets,
     required List<WalletKeeperAsset> assets,
-    required WalletKeeperSmsSettings smsSettings,
+    required List<WalletKeeperSmsDraft> smsDrafts,
   }) async {
+    final attachmentUrls = await _uploadLocalAttachments(session, entries);
+    final cloudEntries = entries
+        .map(
+          (entry) => entry.copyWith(
+            attachmentPaths: entry.attachmentPaths
+                .map((path) => attachmentUrls[path] ?? path)
+                .where(walletKeeperIsRemoteAttachmentPath)
+                .toList(),
+          ),
+        )
+        .toList();
     final deviceInfo = await _accountRepository.getDeviceInfo();
     final response = await http.post(
       Uri.parse('$_baseUrl/save'),
@@ -3487,18 +3534,65 @@ class WalletKeeperCloudSyncRepository {
         'guestSerial': session.deviceSerial,
         'deviceInfo': deviceInfo,
         'payload': WalletKeeperSyncBundle(
-          entries: entries,
+          entries: cloudEntries,
           memos: memos,
           budgets: budgets,
           assets: assets,
-          smsSettings: smsSettings,
+          smsDrafts: smsDrafts,
         ).toJson(),
       }),
     );
     if (response.statusCode != 200) {
       throw Exception('서버 동기화에 실패했습니다.');
     }
+    return WalletKeeperCloudSyncResult(
+      uploadedAttachmentUrls: attachmentUrls,
+    );
   }
+
+  Future<Map<String, String>> _uploadLocalAttachments(
+    WalletKeeperUserSession session,
+    List<LedgerEntry> entries,
+  ) async {
+    final localPaths = entries
+        .expand((entry) => entry.attachmentPaths)
+        .where((path) => !walletKeeperIsRemoteAttachmentPath(path))
+        .toSet();
+    final uploaded = <String, String>{};
+    for (final localPath in localPaths) {
+      final file = File(localPath);
+      if (!await file.exists()) continue;
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$_baseUrl/media'),
+      )..headers['Authorization'] = 'Bearer ${session.token}';
+      request.files.add(await http.MultipartFile.fromPath('file', localPath));
+      final response = await request.send();
+      final responseBody = await response.stream.bytesToString();
+      final payload = jsonDecode(responseBody) as Map<String, dynamic>;
+      if (response.statusCode != 200 || payload['success'] != true) {
+        throw Exception(payload['message'] ?? '첨부 사진 업로드에 실패했습니다.');
+      }
+      final data = (payload['data'] as Map?)?.cast<String, dynamic>() ?? const {};
+      final url = data['url']?.toString() ?? '';
+      if (url.isEmpty) throw Exception('첨부 사진 URL이 비어 있습니다.');
+      uploaded[localPath] = url;
+    }
+    return uploaded;
+  }
+}
+
+class WalletKeeperCloudSyncResult {
+  const WalletKeeperCloudSyncResult({
+    required this.uploadedAttachmentUrls,
+  });
+
+  final Map<String, String> uploadedAttachmentUrls;
+}
+
+bool walletKeeperIsRemoteAttachmentPath(String path) {
+  final uri = Uri.tryParse(path.trim());
+  return uri != null && (uri.scheme == 'https' || uri.scheme == 'http');
 }
 
 String formatCurrency(double amount) {

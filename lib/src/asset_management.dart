@@ -1551,23 +1551,17 @@ Future<WalletKeeperAssetEditorResult?> showWalletKeeperAssetEditorSheet(
     useSafeArea: true,
     backgroundColor: Colors.transparent,
     builder: (sheetContext) {
-      final keyboardInset = MediaQuery.viewInsetsOf(sheetContext).bottom;
       final screenHeight = MediaQuery.sizeOf(sheetContext).height;
-      return AnimatedPadding(
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOutCubic,
-        padding: EdgeInsets.only(bottom: keyboardInset),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: screenHeight * 0.94),
-          child: ClipRRect(
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-            child: Material(
-              color: const Color(0xFFF7F8FA),
-              child: _WalletKeeperAssetEditor(
-                existing: existing,
-                suggestion: suggestion,
-                entries: entries,
-              ),
+      return ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: screenHeight * 0.94),
+        child: ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          child: Material(
+            color: const Color(0xFFF7F8FA),
+            child: _WalletKeeperAssetEditor(
+              existing: existing,
+              suggestion: suggestion,
+              entries: entries,
             ),
           ),
         ),
@@ -1797,6 +1791,7 @@ class _WalletKeeperAssetEditorState extends State<_WalletKeeperAssetEditor> {
   @override
   Widget build(BuildContext context) {
     final availableBrands = _availableBrands;
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -1825,7 +1820,7 @@ class _WalletKeeperAssetEditorState extends State<_WalletKeeperAssetEditor> {
           child: ListView(
             shrinkWrap: true,
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            padding: const EdgeInsets.fromLTRB(18, 4, 18, 12),
+            padding: EdgeInsets.fromLTRB(18, 4, 18, keyboardInset + 12),
             children: [
               const _AssetEditorSectionTitle(
                 title: '자산 종류',

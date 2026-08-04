@@ -14,6 +14,40 @@ void main() {
     expect(find.byType(WalletKeeperCustomSplashScreen), findsOneWidget);
   });
 
+  testWidgets('ios shows a keyboard dismiss action above the keyboard', (
+    WidgetTester tester,
+  ) async {
+    final focusNode = FocusNode();
+    addTearDown(focusNode.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(platform: TargetPlatform.iOS),
+        home: Builder(
+          builder: (context) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(
+              viewInsets: const EdgeInsets.only(bottom: 300),
+            ),
+            child: WalletKeeperKeyboardDismissOverlay(
+              child: Scaffold(
+                body: TextField(focusNode: focusNode, autofocus: true),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(focusNode.hasFocus, isTrue);
+    expect(find.text('내리기'), findsOneWidget);
+
+    await tester.tap(find.text('내리기'));
+    await tester.pump();
+
+    expect(focusNode.hasFocus, isFalse);
+  });
+
   testWidgets('entry editor switches to fixed mode without stale render object', (
     WidgetTester tester,
   ) async {
@@ -196,6 +230,142 @@ void main() {
 
     expect(find.text('문자 가져오기'), findsNothing);
     expect(find.text('문자 붙여넣기'), findsOneWidget);
+  });
+
+  testWidgets('sms inbox restores its scroll offset after reopening a draft', (
+    WidgetTester tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(430, 932));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final now = DateTime(2026, 8, 4, 12);
+    final drafts = List.generate(
+      24,
+      (index) => WalletKeeperSmsDraft(
+        id: 'scroll-$index',
+        title: '감지 내역 $index',
+        amount: 1000 + index.toDouble(),
+        category: '지출',
+        note: '',
+        rawBody: '감지된 금융 문자 $index 1,000원 결제',
+        type: EntryType.expense,
+        date: now.subtract(Duration(minutes: index)),
+        sourceAddress: '1588',
+        sourceType: 'sms',
+        institution: '은행',
+        eventType: 'payment',
+        matchedRule: 'test',
+        sourceAppIconBase64: '',
+      ),
+    );
+    var savedOffset = 0.0;
+
+    Widget buildInbox(double initialOffset) {
+      return MaterialApp(
+        home: Scaffold(
+          body: SmsInboxPage(
+            drafts: drafts,
+            featureAccess: const WalletKeeperFeatureAccess(
+              onboardingSeen: true,
+              smsGranted: true,
+              notificationGranted: true,
+            ),
+            settings: const WalletKeeperSmsSettings(
+              smsReceiveEnabled: true,
+              autoInputEnabled: false,
+              showNotification: true,
+              shareHeuristicReports: false,
+              importWindowDays: 60,
+            ),
+            initialScrollOffset: initialOffset,
+            onScrollOffsetChanged: (offset) => savedOffset = offset,
+            onBack: () {},
+            onOpenSettingsPage: () {},
+            onImportRecent: (_) async {},
+            onOpenDraft: (_) {},
+            onRequestSmsAccess: () async {},
+            onQuickAutoInput: (_) async {},
+            onDeleteSelected: (_) async {},
+            onPasteFromClipboard: () async {},
+          ),
+        ),
+      );
+    }
+
+    await tester.pumpWidget(buildInbox(0));
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(ListView).first, const Offset(0, -900));
+    await tester.pumpAndSettle();
+    expect(savedOffset, greaterThan(0));
+    final previousOffset = savedOffset;
+
+    await tester.pumpWidget(const MaterialApp(home: SizedBox.shrink()));
+    await tester.pump();
+    await tester.pumpWidget(buildInbox(previousOffset));
+    await tester.pumpAndSettle();
+
+    final scrollable = tester.state<ScrollableState>(
+      find.byType(Scrollable).first,
+    );
+    expect(scrollable.position.pixels, closeTo(previousOffset, 1));
+  });
+
+  testWidgets('sms auto input uses the existing asset selector sheet', (
+    WidgetTester tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(430, 932));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final now = DateTime(2026, 8, 4);
+    final asset = WalletKeeperAsset(
+      id: 'asset-auto',
+      name: '국민은행 생활비',
+      institution: 'KB국민은행',
+      type: WalletKeeperAssetType.account,
+      openingBalance: 100000,
+      lastFour: '1234',
+      memo: '',
+      brandKey: 'kb',
+      iconBase64: '',
+      createdAt: now,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SmsSettingsPage(
+            featureAccess: const WalletKeeperFeatureAccess(
+              onboardingSeen: true,
+              smsGranted: true,
+              notificationGranted: true,
+            ),
+            settings: const WalletKeeperSmsSettings(
+              smsReceiveEnabled: true,
+              autoInputEnabled: true,
+              showNotification: true,
+              shareHeuristicReports: false,
+              importWindowDays: 60,
+              autoInputAssetId: 'asset-auto',
+            ),
+            assets: [asset],
+            entries: const [],
+            financialAppNotificationEnabled: true,
+            onBack: () {},
+            onOpenFinancialAppNotificationSettings: () async {},
+            onChanged: (_) async {},
+            onCreateAsset: () async => null,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('자동입력 연결 자산'), findsOneWidget);
+    expect(find.text('국민은행 생활비'), findsOneWidget);
+    await tester.tap(find.text('국민은행 생활비'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('연결할 자산'), findsOneWidget);
+    expect(find.text('연결 안 함'), findsOneWidget);
+    expect(find.text('새 자산 추가'), findsOneWidget);
   });
 
   testWidgets('new entry starts selected date at midnight', (

@@ -165,10 +165,13 @@ class _LedgerHomePageState extends State<LedgerHomePage>
   int? _selectedStatsKind;
   bool _smsListenerAttached = false;
   bool _financialAppNotificationEnabled = false;
+  bool _cloudSyncInProgress = false;
+  bool _cloudSyncRequested = false;
   int _selectedOverviewTab = 0;
   int _overviewResetNonce = 0;
   DateTime? _selectedLedgerDate;
   double _bottomBannerHeight = 0;
+  double _smsInboxScrollOffset = 0;
   final List<_ShellRoute> _routeStack = [const _ShellRoute.root()];
   final GlobalKey<_EntryEditorPageState> _editorPageKey =
       GlobalKey<_EntryEditorPageState>();
@@ -299,8 +302,11 @@ class _LedgerHomePageState extends State<LedgerHomePage>
       _assets = remoteBundle != null && loadedAssets.isEmpty
           ? remoteBundle.assets
           : loadedAssets;
+      _smsDrafts = remoteBundle != null && loadedDrafts.isEmpty
+          ? remoteBundle.smsDrafts
+          : loadedDrafts;
       _inquiries = loadedInquiries;
-      _smsSettings = remoteBundle?.smsSettings ?? loadedSettings;
+      _smsSettings = loadedSettings;
       _session = session;
     });
     if (remoteBundle != null && loadedEntries.isEmpty) {
@@ -315,13 +321,16 @@ class _LedgerHomePageState extends State<LedgerHomePage>
     if (remoteBundle != null && loadedAssets.isEmpty) {
       await _assetRepository.save(remoteBundle.assets);
     }
-    if (remoteBundle != null) {
-      await _smsSettingsRepository.save(remoteBundle.smsSettings);
+    if (remoteBundle != null && loadedDrafts.isEmpty) {
+      await _smsAutomationRepository.replaceInboxDrafts(
+        remoteBundle.smsDrafts,
+      );
     }
     unawaited(_registerPushTokenSilently());
     _startPendingMmsTimerIfNeeded();
     await _consumePendingRealtimeMessages();
     await _consumeLaunchRoute();
+    await _syncCloud();
   }
 
   Future<void> _registerPushTokenSilently() async {
@@ -356,15 +365,49 @@ class _LedgerHomePageState extends State<LedgerHomePage>
   }
 
   Future<void> _syncCloud() async {
+    _cloudSyncRequested = true;
+    if (_cloudSyncInProgress) return;
+    _cloudSyncInProgress = true;
     try {
-      await _cloudSyncRepository.sync(
-        entries: _entries,
-        memos: _memos,
-        budgets: _budgets,
-        assets: _assets,
-        smsSettings: _smsSettings,
-      );
-    } catch (_) {}
+      while (_cloudSyncRequested) {
+        _cloudSyncRequested = false;
+        try {
+          final result = await _cloudSyncRepository.sync(
+            entries: List<LedgerEntry>.from(_entries),
+            memos: List<WalletKeeperMemo>.from(_memos),
+            budgets: List<WalletKeeperBudgetSetting>.from(_budgets),
+            assets: List<WalletKeeperAsset>.from(_assets),
+            smsDrafts: List<WalletKeeperSmsDraft>.from(_smsDrafts),
+          );
+          await _applyUploadedAttachmentUrls(
+            result.uploadedAttachmentUrls,
+          );
+        } catch (error, stackTrace) {
+          debugPrint('Wallet Keeper cloud sync failed: $error');
+          debugPrintStack(stackTrace: stackTrace);
+        }
+      }
+    } finally {
+      _cloudSyncInProgress = false;
+    }
+  }
+
+  Future<void> _applyUploadedAttachmentUrls(
+    Map<String, String> uploadedUrls,
+  ) async {
+    if (uploadedUrls.isEmpty || !mounted) return;
+    var changed = false;
+    final nextEntries = _entries.map((entry) {
+      final nextPaths = entry.attachmentPaths
+          .map((path) => uploadedUrls[path] ?? path)
+          .toList();
+      if (listEquals(nextPaths, entry.attachmentPaths)) return entry;
+      changed = true;
+      return entry.copyWith(attachmentPaths: nextPaths);
+    }).toList();
+    if (!changed) return;
+    setState(() => _entries = nextEntries);
+    await _repository.save(nextEntries);
   }
 
   WalletKeeperSyncBundle _currentLocalBundle() {
@@ -373,7 +416,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
       memos: _memos,
       budgets: _budgets,
       assets: _assets,
-      smsSettings: _smsSettings,
+      smsDrafts: _smsDrafts,
     );
   }
 
@@ -394,7 +437,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
     await _memoRepository.save(bundle.memos);
     await _budgetRepository.save(sortedBudgets);
     await _assetRepository.save(bundle.assets);
-    await _smsSettingsRepository.save(bundle.smsSettings);
+    await _smsAutomationRepository.replaceInboxDrafts(bundle.smsDrafts);
     if (!mounted) return;
     setState(() {
       _session = session;
@@ -403,7 +446,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
       _memos = bundle.memos;
       _budgets = sortedBudgets;
       _assets = bundle.assets;
-      _smsSettings = bundle.smsSettings;
+      _smsDrafts = bundle.smsDrafts;
     });
   }
 
@@ -412,14 +455,15 @@ class _LedgerHomePageState extends State<LedgerHomePage>
     List<WalletKeeperInquiry> inquiries,
   ) async {
     final localBundle = _currentLocalBundle();
-    await _cloudSyncRepository.syncForSession(
+    final result = await _cloudSyncRepository.syncForSession(
       session: session,
       entries: localBundle.entries,
       memos: localBundle.memos,
       budgets: localBundle.budgets,
       assets: localBundle.assets,
-      smsSettings: localBundle.smsSettings,
+      smsDrafts: localBundle.smsDrafts,
     );
+    await _applyUploadedAttachmentUrls(result.uploadedAttachmentUrls);
     if (!mounted) return;
     setState(() {
       _session = session;
@@ -562,6 +606,18 @@ class _LedgerHomePageState extends State<LedgerHomePage>
     return asset;
   }
 
+  Future<WalletKeeperAsset?> _createAssetForSmsAutomation() async {
+    final result = await showWalletKeeperAssetEditorSheet(
+      context,
+      entries: _entries,
+    );
+    final asset = result?.asset;
+    if (asset == null) return null;
+    await _saveAsset(asset);
+    if (mounted) await showAppToast('자동입력 연결 자산을 추가했습니다.');
+    return asset;
+  }
+
   Future<void> _openAssetEditor({WalletKeeperAsset? existing}) async {
     final result = await showWalletKeeperAssetEditorSheet(
       context,
@@ -593,10 +649,16 @@ class _LedgerHomePageState extends State<LedgerHomePage>
       _assetRepository.save(nextAssets),
       _repository.save(nextEntries),
     ]);
+    var nextSmsSettings = _smsSettings;
+    if (_smsSettings.autoInputAssetId == deletedAssetId) {
+      nextSmsSettings = _smsSettings.copyWith(clearAutoInputAssetId: true);
+      await _smsSettingsRepository.save(nextSmsSettings);
+    }
     if (!mounted) return;
     setState(() {
       _assets = nextAssets;
       _entries = nextEntries;
+      _smsSettings = nextSmsSettings;
     });
     await _syncCloud();
     await showAppToast('자산을 삭제했습니다.');
@@ -1021,47 +1083,41 @@ class _LedgerHomePageState extends State<LedgerHomePage>
       isDismissible: false,
       enableDrag: false,
       builder: (sheetContext) {
-        final keyboardInset = MediaQuery.viewInsetsOf(sheetContext).bottom;
         return PopScope(
           canPop: false,
           onPopInvokedWithResult: (didPop, _) async {
             if (didPop) return;
             await attemptClose(sheetContext);
           },
-          child: AnimatedPadding(
-            duration: const Duration(milliseconds: 220),
-            curve: Curves.easeOutCubic,
-            padding: EdgeInsets.only(bottom: keyboardInset),
-            child: FractionallySizedBox(
-              heightFactor: 0.93,
-              child: ClipRRect(
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(28),
-                ),
-                child: Material(
-                  color: Colors.white,
-                  child: EntryEditorPage(
-                    key: editorKey,
-                    existing: existing,
-                    categorySuggestions: _categorySuggestions,
-                    assets: _assets,
-                    featureAccess: widget.featureAccess,
-                    onRequestSmsAccess: widget.onRequestFeatureAccess,
-                    onCreateAsset: _createAssetFromEntryEditor,
-                    onCancel: () => attemptClose(sheetContext),
-                    onDeleteEntry: existing == null
-                        ? null
-                        : () async {
-                            final deleted = await _deleteEntry(existing);
-                            if (!deleted || !sheetContext.mounted) return;
-                            Navigator.of(sheetContext).pop();
-                          },
-                    onSave: (entry) async {
-                      await _saveEntry(entry, stayOnCurrentRoute: true);
-                      if (!sheetContext.mounted) return;
-                      Navigator.of(sheetContext).pop();
-                    },
-                  ),
+          child: FractionallySizedBox(
+            heightFactor: 0.93,
+            child: ClipRRect(
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(28),
+              ),
+              child: Material(
+                color: Colors.white,
+                child: EntryEditorPage(
+                  key: editorKey,
+                  existing: existing,
+                  categorySuggestions: _categorySuggestions,
+                  assets: _assets,
+                  featureAccess: widget.featureAccess,
+                  onRequestSmsAccess: widget.onRequestFeatureAccess,
+                  onCreateAsset: _createAssetFromEntryEditor,
+                  onCancel: () => attemptClose(sheetContext),
+                  onDeleteEntry: existing == null
+                      ? null
+                      : () async {
+                          final deleted = await _deleteEntry(existing);
+                          if (!deleted || !sheetContext.mounted) return;
+                          Navigator.of(sheetContext).pop();
+                        },
+                  onSave: (entry) async {
+                    await _saveEntry(entry, stayOnCurrentRoute: true);
+                    if (!sheetContext.mounted) return;
+                    Navigator.of(sheetContext).pop();
+                  },
                 ),
               ),
             ),
@@ -1069,6 +1125,17 @@ class _LedgerHomePageState extends State<LedgerHomePage>
         );
       },
     );
+  }
+
+  Future<void> _editUpcomingExpense(LedgerEntry projectedEntry) async {
+    var sourceEntry = projectedEntry;
+    for (final entry in _entries) {
+      if (entry.id == projectedEntry.id) {
+        sourceEntry = entry;
+        break;
+      }
+    }
+    await _showEntryEditorSheet(existing: sourceEntry);
   }
 
   Future<void> _showBudgetSettingsSheet({required DateTime month}) async {
@@ -1148,6 +1215,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
     );
     if (!mounted) return;
     setState(() => _smsDrafts = drafts);
+    await _syncCloud();
   }
 
   Future<void> _deleteSelectedSmsDrafts(Set<String> ids) async {
@@ -1160,11 +1228,15 @@ class _LedgerHomePageState extends State<LedgerHomePage>
           .where((draft) => !ids.contains(draft.id))
           .toList();
     });
+    await _syncCloud();
   }
 
   Future<void> _quickAutoInputDraft(WalletKeeperSmsDraft draft) async {
+    final preferredAssetId = _smsSettings.autoInputAssetId;
+    final hasPreferredAsset = preferredAssetId != null &&
+        _assets.any((asset) => asset.id == preferredAssetId);
     await _saveEntry(
-      draft.toEntry(),
+      draft.toEntry(assetId: hasPreferredAsset ? preferredAssetId : null),
       consumedDraftId: draft.id,
       stayOnCurrentRoute: true,
     );
@@ -1192,6 +1264,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
     ]);
     if (!mounted) return;
     setState(() => _smsDrafts = merged);
+    await _syncCloud();
     await showAppToast('문자함에 추가했습니다.');
   }
 
@@ -1199,7 +1272,6 @@ class _LedgerHomePageState extends State<LedgerHomePage>
     await _smsSettingsRepository.save(settings);
     if (!mounted) return;
     setState(() => _smsSettings = settings);
-    await _syncCloud();
   }
 
   Future<void> _saveAppSettings(WalletKeeperAppSettings settings) async {
@@ -1215,6 +1287,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
     setState(
       () => _smsDrafts = _smsDrafts.where((draft) => draft.id != id).toList(),
     );
+    await _syncCloud();
   }
 
   Future<void> _bindSmsListenerIfNeeded() async {
@@ -1267,6 +1340,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
         final result = await _smsAutomationRepository.handleIncomingDraft(
           draft,
           autoSaveToLedger: true,
+          preferredAssetId: _smsSettings.autoInputAssetId,
         );
         if (result == null) continue;
         entriesChanged = entriesChanged || result.savedDirectly;
@@ -1280,10 +1354,16 @@ class _LedgerHomePageState extends State<LedgerHomePage>
         if (!mounted) return;
         setState(() => _entries = loadedEntries);
       }
-      if (draftsChanged) {
-        final drafts = await _smsAutomationRepository.loadInboxDrafts();
-        if (!mounted) return;
-        setState(() => _smsDrafts = drafts);
+      final drafts = await _smsAutomationRepository.loadInboxDrafts();
+      if (!mounted) return;
+      draftsChanged = draftsChanged ||
+          !listEquals(
+            drafts.map((draft) => draft.id).toList(),
+            _smsDrafts.map((draft) => draft.id).toList(),
+          );
+      if (draftsChanged) setState(() => _smsDrafts = drafts);
+      if (entriesChanged || draftsChanged) {
+        await _syncCloud();
       }
       return;
     }
@@ -1292,6 +1372,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
     );
     if (!mounted) return;
     setState(() => _smsDrafts = merged);
+    await _syncCloud();
   }
 
   Future<void> _consumeLaunchRoute() async {
@@ -1315,6 +1396,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
     final result = await _smsAutomationRepository.handleIncomingMessage(
       message,
       autoSaveToLedger: _smsSettings.autoInputEnabled,
+      preferredAssetId: _smsSettings.autoInputAssetId,
     );
     if (!mounted || result == null) return;
     if (result.savedDirectly) {
@@ -1329,6 +1411,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
         ]..sort((a, b) => b.date.compareTo(a.date));
       });
     }
+    await _syncCloud();
     if (_smsSettings.showNotification) {
       await WalletKeeperNotificationService.showSmsDetectedNotification(result);
     }
@@ -1484,6 +1567,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
             onAddAsset: () => _openAssetEditor(),
             onEditAsset: (asset) => _openAssetEditor(existing: asset),
             onConnectUnlinkedEntries: _openUnlinkedAssetEntries,
+            onEditUpcomingExpense: _editUpcomingExpense,
             onOpenUpcomingExpenses: () => setState(
               () => _routeStack.add(const _ShellRoute.assetUpcomingHistory()),
             ),
@@ -1559,17 +1643,24 @@ class _LedgerHomePageState extends State<LedgerHomePage>
           onQuickAutoInput: _quickAutoInputDraft,
           onDeleteSelected: _deleteSelectedSmsDrafts,
           onPasteFromClipboard: _pasteSmsFromClipboard,
+          initialScrollOffset: _smsInboxScrollOffset,
+          onScrollOffsetChanged: (offset) {
+            _smsInboxScrollOffset = offset;
+          },
         );
         break;
       case _ShellRouteKind.smsSettings:
         page = SmsSettingsPage(
           featureAccess: widget.featureAccess,
           settings: _smsSettings,
+          assets: _assets,
+          entries: _entries,
           financialAppNotificationEnabled: _financialAppNotificationEnabled,
           onBack: () => setState(() => _routeStack.removeLast()),
           onOpenFinancialAppNotificationSettings:
               _openFinancialAppNotificationSettings,
           onChanged: _saveSmsSettings,
+          onCreateAsset: _createAssetForSmsAutomation,
         );
         break;
       case _ShellRouteKind.settingsProfile:
@@ -1624,6 +1715,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
         page = AssetUpcomingExpensesPage(
           entries: _entries,
           onBack: () => setState(() => _routeStack.removeLast()),
+          onEditEntry: _editUpcomingExpense,
         );
         break;
       case _ShellRouteKind.assetTransactionHistory:
@@ -1692,6 +1784,7 @@ class _LedgerHomePageState extends State<LedgerHomePage>
       },
       child: Scaffold(
         extendBody: true,
+        resizeToAvoidBottomInset: false,
         body: _BottomOverlayScope(
           overlayHeight: bottomOverlayHeight,
           child: SafeArea(

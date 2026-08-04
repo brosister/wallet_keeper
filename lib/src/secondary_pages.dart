@@ -1895,6 +1895,8 @@ class SmsInboxPage extends StatefulWidget {
     required this.onQuickAutoInput,
     required this.onDeleteSelected,
     required this.onPasteFromClipboard,
+    this.initialScrollOffset = 0,
+    this.onScrollOffsetChanged,
   });
 
   final List<WalletKeeperSmsDraft> drafts;
@@ -1908,6 +1910,8 @@ class SmsInboxPage extends StatefulWidget {
   final Future<void> Function(WalletKeeperSmsDraft draft) onQuickAutoInput;
   final Future<void> Function(Set<String> ids) onDeleteSelected;
   final Future<void> Function() onPasteFromClipboard;
+  final double initialScrollOffset;
+  final ValueChanged<double>? onScrollOffsetChanged;
 
   @override
   State<SmsInboxPage> createState() => _SmsInboxPageState();
@@ -1918,6 +1922,33 @@ class _SmsInboxPageState extends State<SmsInboxPage> {
   bool _deleteMode = false;
   final Set<String> _selectedIds = <String>{};
   final Set<String> _pendingRemovalIds = <String>{};
+  late final ScrollController _scrollController;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController(
+      initialScrollOffset: widget.initialScrollOffset,
+    )..addListener(_rememberScrollOffset);
+  }
+
+  void _rememberScrollOffset() {
+    if (!_scrollController.hasClients) return;
+    widget.onScrollOffsetChanged?.call(_scrollController.offset);
+  }
+
+  @override
+  void dispose() {
+    widget.onScrollOffsetChanged?.call(
+      _scrollController.hasClients
+          ? _scrollController.offset
+          : widget.initialScrollOffset,
+    );
+    _scrollController
+      ..removeListener(_rememberScrollOffset)
+      ..dispose();
+    super.dispose();
+  }
 
   List<WalletKeeperSmsDraft> get _visibleDrafts => widget.drafts
       .where((draft) => !_pendingRemovalIds.contains(draft.id))
@@ -2181,6 +2212,7 @@ class _SmsInboxPageState extends State<SmsInboxPage> {
             ),
             Expanded(
               child: ListView(
+                controller: _scrollController,
                 padding: EdgeInsets.only(bottom: bottomInset + 24),
                 children: [
                   Container(
@@ -2604,18 +2636,54 @@ class SmsSettingsPage extends StatelessWidget {
     super.key,
     required this.featureAccess,
     required this.settings,
+    required this.assets,
+    required this.entries,
     required this.financialAppNotificationEnabled,
     required this.onBack,
     required this.onOpenFinancialAppNotificationSettings,
     required this.onChanged,
+    required this.onCreateAsset,
   });
 
   final WalletKeeperFeatureAccess featureAccess;
   final WalletKeeperSmsSettings settings;
+  final List<WalletKeeperAsset> assets;
+  final List<LedgerEntry> entries;
   final bool financialAppNotificationEnabled;
   final VoidCallback onBack;
   final Future<void> Function() onOpenFinancialAppNotificationSettings;
   final Future<void> Function(WalletKeeperSmsSettings settings) onChanged;
+  final Future<WalletKeeperAsset?> Function() onCreateAsset;
+
+  WalletKeeperAsset? get selectedAutoInputAsset {
+    final selectedId = settings.autoInputAssetId;
+    if (selectedId == null) return null;
+    for (final asset in assets) {
+      if (asset.id == selectedId) return asset;
+    }
+    return null;
+  }
+
+  Future<void> _selectAutoInputAsset(BuildContext context) async {
+    final selection = await showWalletKeeperAssetSelectorSheet(
+      context,
+      assets: assets,
+      entries: entries,
+      selectedAssetId: selectedAutoInputAsset?.id,
+    );
+    if (selection == null) return;
+    if (selection == _assetSelectorNone) {
+      await onChanged(settings.copyWith(clearAutoInputAssetId: true));
+      return;
+    }
+    if (selection == _assetSelectorCreate) {
+      final created = await onCreateAsset();
+      if (created == null) return;
+      await onChanged(settings.copyWith(autoInputAssetId: created.id));
+      return;
+    }
+    await onChanged(settings.copyWith(autoInputAssetId: selection));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2652,6 +2720,11 @@ class SmsSettingsPage extends StatelessWidget {
                   onChanged: (value) =>
                       onChanged(settings.copyWith(autoInputEnabled: value)),
                 ),
+                if (settings.autoInputEnabled)
+                  _SmsAutoInputAssetRow(
+                    selectedAsset: selectedAutoInputAsset,
+                    onTap: () => _selectAutoInputAsset(context),
+                  ),
                 _SettingsSwitchRow(
                   title: '알림바에 문자 수신 알림 표시하기',
                   value: settings.showNotification,
@@ -2660,6 +2733,42 @@ class SmsSettingsPage extends StatelessWidget {
                 ),
               ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SmsAutoInputAssetRow extends StatelessWidget {
+  const _SmsAutoInputAssetRow({
+    required this.selectedAsset,
+    required this.onTap,
+  });
+
+  final WalletKeeperAsset? selectedAsset;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.fromLTRB(16, 2, 16, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '자동입력 연결 자산',
+            style: TextStyle(
+              color: Color(0xFF6F7782),
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          _LinkedAssetSelectionCard(
+            selected: selectedAsset,
+            onTap: onTap,
           ),
         ],
       ),
@@ -3466,110 +3575,12 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
   }
 
   Widget _buildLinkedAssetRow() {
-    final selected = _selectedAsset;
-    final suggestion = _detectedAssetSuggestion;
-    final hasDetectedSuggestion = selected == null && suggestion != null;
     return _EditorRow(
       label: '연결 자산',
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: _selectLinkedAsset,
-          borderRadius: BorderRadius.circular(14),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
-            decoration: BoxDecoration(
-              color: hasDetectedSuggestion
-                  ? const Color(0xFFFFF3EF)
-                  : const Color(0xFFF7F8FA),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: hasDetectedSuggestion
-                    ? const Color(0xFFFFC9C3)
-                    : const Color(0xFFE8ECF1),
-              ),
-            ),
-            child: Row(
-              children: [
-                if (selected != null)
-                  WalletKeeperAssetIcon(
-                    type: selected.type,
-                    brandKey: selected.brandKey,
-                    iconBase64: selected.iconBase64,
-                    size: 34,
-                  )
-                else if (suggestion != null)
-                  WalletKeeperAssetIcon(
-                    type: suggestion.type,
-                    brandKey: suggestion.brandKey,
-                    iconBase64: suggestion.iconBase64,
-                    size: 34,
-                  )
-                else
-                  Container(
-                    width: 34,
-                    height: 34,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFECEF3F),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(
-                      Icons.account_balance_wallet_outlined,
-                      size: 18,
-                      color: Color(0xFF8D96A2),
-                    ),
-                  ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        selected?.name ??
-                            (suggestion == null
-                                ? '자산을 선택해주세요'
-                                : '${suggestion.institution} 감지됨'),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: selected != null || suggestion != null
-                              ? const Color(0xFF282D34)
-                              : const Color(0xFF9AA2AD),
-                          fontSize: 13,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      if (selected != null || suggestion != null) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          selected != null
-                              ? '${selected.type.label} · 저장 시 금액 자동 반영'
-                              : '등록된 자산이 없으면 바로 추가할 수 있어요',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Color(0xFF929BA7),
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                Icon(
-                  selected == null && suggestion != null
-                      ? Icons.add_circle_rounded
-                      : Icons.chevron_right_rounded,
-                  size: 21,
-                  color: selected == null && suggestion != null
-                      ? const Color(0xFFFF695D)
-                      : const Color(0xFFABB3BD),
-                ),
-              ],
-            ),
-          ),
-        ),
+      child: _LinkedAssetSelectionCard(
+        selected: _selectedAsset,
+        suggestion: _detectedAssetSuggestion,
+        onTap: _selectLinkedAsset,
       ),
     );
   }
@@ -3577,6 +3588,7 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
   @override
   Widget build(BuildContext context) {
     final bottomInset = bottomOverlayHeightOf(context);
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
     final actionBarBottomInset = math.max(0.0, bottomInset - 38);
     final applySystemBottomSafeArea = bottomInset == 0;
     final actionBarBottomPadding = bottomInset > 0 ? 22.0 : 12.0;
@@ -3591,7 +3603,7 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
           Expanded(
             child: ListView(
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.manual,
-              padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
+              padding: EdgeInsets.fromLTRB(18, 18, 18, keyboardInset + 24),
               children: [
                 Row(
                   children: _editableModes.map((mode) {
@@ -4023,25 +4035,25 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
                                 children: [
                                   ClipRRect(
                                     borderRadius: BorderRadius.circular(12),
-                                    child: Image.file(
-                                      File(path),
-                                      width: 86,
-                                      height: 86,
-                                      fit: BoxFit.cover,
-                                      errorBuilder:
-                                          (context, error, stackTrace) =>
-                                              Container(
-                                                width: 86,
-                                                height: 86,
-                                                color: const Color(0xFFF1F4F8),
-                                                alignment: Alignment.center,
-                                                child: const Icon(
-                                                  Icons.broken_image_outlined,
-                                                  color: Color(0xFF9AA3B2),
-                                                  size: 20,
-                                                ),
-                                              ),
-                                    ),
+                                    child: walletKeeperIsRemoteAttachmentPath(
+                                      path,
+                                    )
+                                        ? Image.network(
+                                            path,
+                                            width: 86,
+                                            height: 86,
+                                            fit: BoxFit.cover,
+                                            errorBuilder:
+                                                _buildWalletKeeperAttachmentError,
+                                          )
+                                        : Image.file(
+                                            File(path),
+                                            width: 86,
+                                            height: 86,
+                                            fit: BoxFit.cover,
+                                            errorBuilder:
+                                                _buildWalletKeeperAttachmentError,
+                                          ),
                                   ),
                                   Positioned(
                                     top: 4,
@@ -4233,6 +4245,24 @@ String _cleanSmsDraftBody(String rawNote) {
       .trim();
 }
 
+Widget _buildWalletKeeperAttachmentError(
+  BuildContext context,
+  Object error,
+  StackTrace? stackTrace,
+) {
+  return Container(
+    width: 86,
+    height: 86,
+    color: const Color(0xFFF1F4F8),
+    alignment: Alignment.center,
+    child: const Icon(
+      Icons.broken_image_outlined,
+      color: Color(0xFF9AA3B2),
+      size: 20,
+    ),
+  );
+}
+
 class _EditorRow extends StatelessWidget {
   const _EditorRow({required this.label, required this.child});
 
@@ -4262,6 +4292,123 @@ class _EditorRow extends StatelessWidget {
           ),
           Expanded(child: child),
         ],
+      ),
+    );
+  }
+}
+
+class _LinkedAssetSelectionCard extends StatelessWidget {
+  const _LinkedAssetSelectionCard({
+    required this.selected,
+    required this.onTap,
+    this.suggestion,
+  });
+
+  final WalletKeeperAsset? selected;
+  final WalletKeeperAssetSuggestion? suggestion;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasDetectedSuggestion = selected == null && suggestion != null;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
+          decoration: BoxDecoration(
+            color: hasDetectedSuggestion
+                ? const Color(0xFFFFF3EF)
+                : const Color(0xFFF7F8FA),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: hasDetectedSuggestion
+                  ? const Color(0xFFFFC9C3)
+                  : const Color(0xFFE8ECF1),
+            ),
+          ),
+          child: Row(
+            children: [
+              if (selected != null)
+                WalletKeeperAssetIcon(
+                  type: selected!.type,
+                  brandKey: selected!.brandKey,
+                  iconBase64: selected!.iconBase64,
+                  size: 34,
+                )
+              else if (suggestion != null)
+                WalletKeeperAssetIcon(
+                  type: suggestion!.type,
+                  brandKey: suggestion!.brandKey,
+                  iconBase64: suggestion!.iconBase64,
+                  size: 34,
+                )
+              else
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF0F2F5),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.account_balance_wallet_outlined,
+                    size: 18,
+                    color: Color(0xFF8D96A2),
+                  ),
+                ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      selected?.name ??
+                          (suggestion == null
+                              ? '자산을 선택해주세요'
+                              : '${suggestion!.institution} 감지됨'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: selected != null || suggestion != null
+                            ? const Color(0xFF282D34)
+                            : const Color(0xFF9AA2AD),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    if (selected != null || suggestion != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        selected != null
+                            ? '${selected!.type.label} · 저장 시 금액 자동 반영'
+                            : '등록된 자산이 없으면 바로 추가할 수 있어요',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFF929BA7),
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              Icon(
+                hasDetectedSuggestion
+                    ? Icons.add_circle_rounded
+                    : Icons.chevron_right_rounded,
+                size: 21,
+                color: hasDetectedSuggestion
+                    ? const Color(0xFFFF695D)
+                    : const Color(0xFFABB3BD),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -5311,6 +5458,7 @@ class _InquiryComposePageState extends State<InquiryComposePage> {
   @override
   Widget build(BuildContext context) {
     final bottomInset = bottomOverlayHeightOf(context);
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
     final actionBarBottomInset = math.max(0.0, bottomInset - 38);
     final applySystemBottomSafeArea = bottomInset == 0;
     final actionBarBottomPadding = bottomInset > 0 ? 22.0 : 12.0;
@@ -5321,7 +5469,13 @@ class _InquiryComposePageState extends State<InquiryComposePage> {
           _CompactPageHeader(title: '문의쓰기', onBack: widget.onBack),
           Expanded(
             child: ListView(
-              padding: EdgeInsets.fromLTRB(16, 10, 16, bottomInset + 96),
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: EdgeInsets.fromLTRB(
+                16,
+                10,
+                16,
+                bottomInset + keyboardInset + 96,
+              ),
               children: [
                 Container(
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
@@ -5515,6 +5669,7 @@ class AssetPage extends StatelessWidget {
     required this.onAddAsset,
     required this.onEditAsset,
     required this.onConnectUnlinkedEntries,
+    required this.onEditUpcomingExpense,
     required this.onOpenUpcomingExpenses,
     required this.onOpenAllAssetHistory,
     required this.onOpenAssetHistory,
@@ -5526,6 +5681,7 @@ class AssetPage extends StatelessWidget {
   final VoidCallback onAddAsset;
   final ValueChanged<WalletKeeperAsset> onEditAsset;
   final VoidCallback onConnectUnlinkedEntries;
+  final ValueChanged<LedgerEntry> onEditUpcomingExpense;
   final VoidCallback onOpenUpcomingExpenses;
   final VoidCallback onOpenAllAssetHistory;
   final ValueChanged<WalletKeeperAsset> onOpenAssetHistory;
@@ -5536,7 +5692,7 @@ class AssetPage extends StatelessWidget {
     final now = DateTime.now();
     final startOfToday = DateTime(now.year, now.month, now.day);
     final unlinkedEntries = walletKeeperUnlinkedAssetEntries(entries, assets);
-    final visibleUpcomingExpenses = _buildUpcomingFixedExpenses(
+    final visibleUpcomingExpenses = buildWalletKeeperUpcomingFixedExpenses(
       entries,
       now: now,
       startOfToday: startOfToday,
@@ -5624,7 +5780,19 @@ class AssetPage extends StatelessWidget {
                                   ? 0
                                   : 16,
                             ),
-                            child: _UpcomingExpenseRow(entry: entry),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: () => onEditUpcomingExpense(entry),
+                                borderRadius: BorderRadius.circular(14),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 3,
+                                  ),
+                                  child: _UpcomingExpenseRow(entry: entry),
+                                ),
+                              ),
+                            ),
                           );
                         }),
                     ],
@@ -5639,85 +5807,41 @@ class AssetPage extends StatelessWidget {
   }
 }
 
-List<LedgerEntry> _buildUpcomingFixedExpenses(
+List<LedgerEntry> buildWalletKeeperUpcomingFixedExpenses(
   List<LedgerEntry> entries, {
   required DateTime now,
   required DateTime startOfToday,
 }) {
-  final futureFixed =
-      entries
-          .where(
-            (entry) =>
-                entry.type == EntryType.expense &&
-                !entry.date.isBefore(startOfToday) &&
-                _looksLikeFixedExpense(entry),
-          )
-          .toList()
-        ..sort((a, b) => a.date.compareTo(b.date));
-
-  final groups = <String, List<LedgerEntry>>{};
-  for (final entry in entries.where((item) => item.type == EntryType.expense)) {
-    groups
-        .putIfAbsent(_fixedExpenseSignature(entry), () => <LedgerEntry>[])
-        .add(entry);
-  }
-
+  final currentMonth = DateTime(now.year, now.month);
   final projected = <LedgerEntry>[];
-  for (final group in groups.values) {
-    group.sort((a, b) => b.date.compareTo(a.date));
-    final sample = group.first;
-    final explicitFixed = _looksLikeFixedExpense(sample);
-    final hasMonthlyPattern = _hasMonthlyRecurringPattern(group);
-    if (!explicitFixed && !hasMonthlyPattern) continue;
+  final seenIds = <String>{};
 
-    final dueDay = group.first.fixedDay ?? group.first.date.day;
-    final projectedDate = walletKeeperFixedOccurrenceDate(
-      year: now.year,
-      month: now.month,
-      fixedDay: dueDay,
-      sourceTime: group.first.date,
+  for (final entry in entries.where((item) => item.isFixedExpense)) {
+    if (!seenIds.add(entry.id)) continue;
+    final sourceMonth = DateTime(entry.date.year, entry.date.month);
+    var targetMonth = sourceMonth.isAfter(currentMonth)
+        ? sourceMonth
+        : currentMonth;
+    var projectedDate = walletKeeperFixedOccurrenceDate(
+      year: targetMonth.year,
+      month: targetMonth.month,
+      fixedDay: entry.fixedDay!,
+      sourceTime: entry.date,
     );
-    if (projectedDate.isBefore(startOfToday)) continue;
-
-    final alreadyOccurredThisMonth = group.any(
-      (entry) =>
-          entry.date.year == now.year &&
-          entry.date.month == now.month &&
-          entry.date.day == projectedDate.day,
-    );
-    if (alreadyOccurredThisMonth) continue;
-
-    final sameFutureAlreadyExists = futureFixed.any(
-      (entry) =>
-          _fixedExpenseSignature(entry) == _fixedExpenseSignature(sample),
-    );
-    if (sameFutureAlreadyExists) continue;
-
-    projected.add(
-      LedgerEntry(
-        id: sample.id,
-        title: sample.title,
-        amount: sample.amount,
-        category: sample.category,
-        note: sample.note,
-        attachmentPaths: sample.attachmentPaths,
-        type: sample.type,
-        date: projectedDate,
-        createdAt: sample.createdAt,
-        fixedDay: sample.fixedDay,
-      ),
-    );
+    if (projectedDate.isBefore(startOfToday)) {
+      targetMonth = DateTime(targetMonth.year, targetMonth.month + 1);
+      projectedDate = walletKeeperFixedOccurrenceDate(
+        year: targetMonth.year,
+        month: targetMonth.month,
+        fixedDay: entry.fixedDay!,
+        sourceTime: entry.date,
+      );
+    }
+    projected.add(entry.copyWith(date: projectedDate));
   }
 
-  final merged = [...futureFixed, ...projected];
-  merged.sort((a, b) => a.date.compareTo(b.date));
-  final seen = <String>{};
-  return merged.where((entry) {
-    final key =
-        '${_fixedExpenseSignature(entry)}|${entry.date.year}-${entry.date.month}-${entry.date.day}';
-    if (!seen.add(key)) return false;
-    return true;
-  }).toList();
+  projected.sort((a, b) => a.date.compareTo(b.date));
+  return projected;
 }
 
 List<LedgerEntry> _statsEntriesForRange(
@@ -5751,47 +5875,6 @@ List<LedgerEntry> _statsEntriesForRange(
     }
   }
   return result;
-}
-
-String _fixedExpenseSignature(LedgerEntry entry) =>
-    '${entry.title.trim().toLowerCase()}|${entry.category.trim().toLowerCase()}';
-
-bool _hasMonthlyRecurringPattern(List<LedgerEntry> group) {
-  if (group.length < 2) return false;
-  final sorted = List<LedgerEntry>.from(group)
-    ..sort((a, b) => b.date.compareTo(a.date));
-  for (var index = 0; index < sorted.length - 1; index++) {
-    final diff = sorted[index].date
-        .difference(sorted[index + 1].date)
-        .inDays
-        .abs();
-    if (diff >= 25 && diff <= 35) return true;
-  }
-  return false;
-}
-
-bool _looksLikeFixedExpense(LedgerEntry entry) {
-  if (entry.isFixedExpense) return true;
-  final combined = '${entry.title} ${entry.category} ${entry.note}'
-      .toLowerCase();
-  const fixedKeywords = [
-    '고정',
-    '자동이체',
-    '카드대금',
-    '통신',
-    '보험',
-    '관리비',
-    '월세',
-    '구독',
-    '정기',
-    '납부',
-    '공과금',
-    '대출',
-    '할부',
-    '렌탈',
-    '학원',
-  ];
-  return fixedKeywords.any(combined.contains);
 }
 
 List<_StatsTrendPoint> _buildRecentTrendPoints(
@@ -6347,17 +6430,19 @@ class AssetUpcomingExpensesPage extends StatelessWidget {
     super.key,
     required this.entries,
     required this.onBack,
+    required this.onEditEntry,
   });
 
   final List<LedgerEntry> entries;
   final VoidCallback onBack;
+  final ValueChanged<LedgerEntry> onEditEntry;
 
   @override
   Widget build(BuildContext context) {
     final bottomInset = bottomOverlayHeightOf(context);
     final now = DateTime.now();
     final startOfToday = DateTime(now.year, now.month, now.day);
-    final upcoming = _buildUpcomingFixedExpenses(
+    final upcoming = buildWalletKeeperUpcomingFixedExpenses(
       entries,
       now: now,
       startOfToday: startOfToday,
@@ -6458,9 +6543,21 @@ class AssetUpcomingExpensesPage extends StatelessWidget {
                               );
                               return Column(
                                 children: [
-                                  _UpcomingExpenseAnalysisRow(
-                                    entry: entry,
-                                    isProjected: isProjected,
+                                  Material(
+                                    color: Colors.transparent,
+                                    child: InkWell(
+                                      onTap: () => onEditEntry(entry),
+                                      borderRadius: BorderRadius.circular(14),
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 4,
+                                        ),
+                                        child: _UpcomingExpenseAnalysisRow(
+                                          entry: entry,
+                                          isProjected: isProjected,
+                                        ),
+                                      ),
+                                    ),
                                   ),
                                   if (index != upcoming.length - 1)
                                     const Divider(
@@ -6895,6 +6992,7 @@ class _MemoEditorPageState extends State<MemoEditorPage> {
 
   @override
   Widget build(BuildContext context) {
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
     return Container(
       color: const Color(0xFFF7F8FA),
       child: Column(
@@ -6902,7 +7000,8 @@ class _MemoEditorPageState extends State<MemoEditorPage> {
           _CompactPageHeader(title: '메모 작성', onBack: widget.onBack),
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: EdgeInsets.fromLTRB(16, 10, 16, keyboardInset + 24),
               children: [
                 Container(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
@@ -7105,6 +7204,7 @@ class _BudgetSettingsSheetState extends State<BudgetSettingsSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
     return Container(
       color: const Color(0xFFF7F8FA),
       child: Column(
@@ -7116,7 +7216,7 @@ class _BudgetSettingsSheetState extends State<BudgetSettingsSheet> {
           Expanded(
             child: ListView(
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.manual,
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+              padding: EdgeInsets.fromLTRB(16, 12, 16, keyboardInset + 20),
               children: [
                 SizedBox(
                   height: 48,
@@ -8946,7 +9046,9 @@ class _WalletKeeperPhotoPickerPageState
       Navigator.of(context).pop(_selectedPaths);
       return;
     }
-    final imagePaths = <String>[];
+    final imagePaths = _selectedPaths
+        .where(walletKeeperIsRemoteAttachmentPath)
+        .toList();
     for (final imageId in selectedIds) {
       final media = _mediaList.cast<AssetEntity?>().firstWhere(
         (item) => item?.id == imageId,
@@ -8954,7 +9056,7 @@ class _WalletKeeperPhotoPickerPageState
       );
       if (media == null) continue;
       final file = await media.file;
-      if (file != null) {
+      if (file != null && !imagePaths.contains(file.path)) {
         imagePaths.add(file.path);
       }
     }
