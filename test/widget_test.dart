@@ -130,12 +130,90 @@ void main() {
       (widget) => widget is TextField && widget.decoration?.hintText == '0',
     );
 
+    await tester.tap(amountField);
+    await tester.enterText(amountField, '123456');
+    await tester.pump();
+
     await tester.tap(categoryField);
     await tester.pumpAndSettle();
     expect(find.text('식비'), findsOneWidget);
+    expect(tester.takeException(), isNull);
 
-    await tester.tap(amountField);
+    await tester.tapAt(const Offset(410, 850));
     await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('cleared edit category autocomplete stays anchored to its field', (
+    WidgetTester tester,
+  ) async {
+    await initializeDateFormatting('ko_KR');
+    await tester.binding.setSurfaceSize(const Size(430, 932));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('ko'),
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                viewInsets: const EdgeInsets.only(bottom: 420),
+              ),
+              child: EntryEditorPage(
+                existing: LedgerEntry(
+                  id: 'category-overlay-entry',
+                  title: '점심',
+                  amount: 12000,
+                  category: '식비',
+                  note: '',
+                  attachmentPaths: const [],
+                  type: EntryType.expense,
+                  date: DateTime(2026, 8, 5, 12),
+                  createdAt: DateTime(2026, 8, 5, 12),
+                ),
+                categorySuggestions: const ['식비', '교통', '쇼핑'],
+                assets: const [],
+                featureAccess: const WalletKeeperFeatureAccess(
+                  onboardingSeen: true,
+                  smsGranted: true,
+                  notificationGranted: true,
+                ),
+                onRequestSmsAccess: () async {},
+                onCreateAsset: (_) async => null,
+                onSave: (_) async {},
+                onCancel: () async {},
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final categoryField = find.byWidgetPredicate(
+      (widget) =>
+          widget is TextField && widget.decoration?.hintText == '분류 입력',
+    );
+    await tester.tap(categoryField);
+    await tester.pumpAndSettle();
+    await tester.enterText(categoryField, '');
+    await tester.pumpAndSettle();
+
+    final panel = find.byKey(
+      const ValueKey('entry-category-autocomplete-panel'),
+    );
+    expect(panel, findsOneWidget);
+    final panelRect = tester.getRect(panel);
+    final fieldRect = tester.getRect(categoryField);
+    expect(panelRect.height, lessThanOrEqualTo(240));
+    expect(panelRect.top, greaterThan(24));
+    expect(panelRect.bottom, lessThanOrEqualTo(fieldRect.top + 1));
     expect(tester.takeException(), isNull);
   });
 

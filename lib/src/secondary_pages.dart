@@ -2942,6 +2942,7 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
   late final FocusNode _categoryFocusNode;
   final GlobalKey _categoryFieldKey = GlobalKey();
   final Object _categoryAutocompleteGroup = Object();
+  Timer? _categoryVisibilityTimer;
   List<String> _attachmentPaths = const [];
   late EntryType _type;
   _EntryEditorMode _mode = _EntryEditorMode.expense;
@@ -3090,20 +3091,22 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
   }
 
   void _handleCategoryFocusChanged() {
-    if (!mounted || !_categoryFocusNode.hasFocus) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_categoryFocusNode.hasFocus) return;
-      _refreshCategoryAutocompleteLayout();
-    });
+    if (!mounted) return;
+    if (!_categoryFocusNode.hasFocus) {
+      _categoryVisibilityTimer?.cancel();
+      return;
+    }
+    _scheduleCategoryFieldVisibility();
   }
 
   void _handleCategoryFieldTap() {
     if (!mounted || !_categoryFocusNode.hasFocus) return;
-    _refreshCategoryAutocompleteLayout();
+    _scheduleCategoryFieldVisibility();
   }
 
-  void _refreshCategoryAutocompleteLayout({int remainingPasses = 2}) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+  void _scheduleCategoryFieldVisibility() {
+    _categoryVisibilityTimer?.cancel();
+    _categoryVisibilityTimer = Timer(const Duration(milliseconds: 120), () {
       if (!mounted || !_categoryFocusNode.hasFocus) return;
       final fieldContext = _categoryFieldKey.currentContext;
       final renderBox = _activeRenderBoxOf(fieldContext);
@@ -3112,20 +3115,14 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
           unawaited(
             Scrollable.ensureVisible(
               fieldContext,
-              duration: const Duration(milliseconds: 180),
+              duration: const Duration(milliseconds: 140),
               curve: Curves.easeOutCubic,
-              alignment: 0.18,
               alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
             ).catchError((_) {}),
           );
         } on FlutterError {
           // The field can be reparented while the editor mode is changing.
         }
-      }
-      if (remainingPasses > 0) {
-        _refreshCategoryAutocompleteLayout(
-          remainingPasses: remainingPasses - 1,
-        );
       }
     });
   }
@@ -3173,6 +3170,7 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
 
   @override
   void dispose() {
+    _categoryVisibilityTimer?.cancel();
     _titleController.dispose();
     _amountController.dispose();
     _categoryController.dispose();
@@ -3762,15 +3760,10 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
                   label: '분류',
                   child: Builder(
                     builder: (context) {
-                      final autocompleteLayout =
-                          _resolveAutocompletePanelLayout(
-                            context,
-                            _categoryFieldKey,
-                          );
                       return RawAutocomplete<String>(
                         textEditingController: _categoryController,
                         focusNode: _categoryFocusNode,
-                        optionsViewOpenDirection: autocompleteLayout.direction,
+                        optionsViewOpenDirection: OptionsViewOpenDirection.up,
                         optionsBuilder: (textEditingValue) {
                           final query = textEditingValue.text
                               .trim()
@@ -3829,12 +3822,18 @@ class _EntryEditorPageState extends State<EntryEditorPage> {
                               _resolveAutocompletePanelLayout(
                                 context,
                                 _categoryFieldKey,
+                                openDirection: OptionsViewOpenDirection.up,
                               );
                           return Align(
                             alignment: Alignment.topLeft,
+                            widthFactor: 1,
+                            heightFactor: 1,
                             child: TapRegion(
                               groupId: _categoryAutocompleteGroup,
                               child: Material(
+                                key: const ValueKey(
+                                  'entry-category-autocomplete-panel',
+                                ),
                                 color: Colors.white,
                                 elevation: 10,
                                 borderRadius: BorderRadius.circular(16),
@@ -7601,6 +7600,7 @@ _AutocompletePanelLayout _resolveAutocompletePanelLayout(
   BuildContext context,
   GlobalKey fieldKey, {
   double preferredMaxHeight = 240,
+  OptionsViewOpenDirection? openDirection,
 }) {
   final mediaQuery = MediaQuery.of(context);
   final screenHeight = mediaQuery.size.height;
@@ -7619,9 +7619,11 @@ _AutocompletePanelLayout _resolveAutocompletePanelLayout(
   final fieldBottom = fieldTop + renderBox.size.height;
   final availableAbove = math.max(0.0, fieldTop - safeTop);
   final availableBelow = math.max(0.0, keyboardTop - fieldBottom);
-  final direction = availableBelow >= 180 || availableBelow >= availableAbove
-      ? OptionsViewOpenDirection.down
-      : OptionsViewOpenDirection.up;
+  final direction =
+      openDirection ??
+      (availableBelow >= 180 || availableBelow >= availableAbove
+          ? OptionsViewOpenDirection.down
+          : OptionsViewOpenDirection.up);
   final availableHeight = direction == OptionsViewOpenDirection.down
       ? availableBelow
       : availableAbove;
